@@ -1,0 +1,57 @@
+{
+	"name": "@plannotator/tot",
+	"version": "0.1.0",
+	"description": "Publish a markdown or HTML file to a living tot.page URL. A tiny CLI over the Workspaces /v1 API.",
+	"keywords": [
+		"cli",
+		"markdown",
+		"plannotator",
+		"publish",
+		"tot",
+		"tot.page"
+	],
+	"homepage": "https://github.com/plannotator/tot#readme",
+	"bugs": "https://github.com/plannotator/tot/issues",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/plannotator/tot.git"
+	},
+	"bin": {
+		"tot": "./dist/cli.js"
+	},
+	"files": [
+		"dist"
+	],
+	"type": "module",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		}
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"scripts": {
+		"build": "tsc -p tsconfig.build.json",
+		"lint": "oxlint",
+		"lint:fix": "oxlint --fix",
+		"format": "oxfmt --write .",
+		"format:check": "oxfmt --check .",
+		"typecheck": "tsc --noEmit -p tsconfig.json",
+		"test": "vitest run",
+		"prepublishOnly": "pnpm lint && pnpm typecheck && pnpm test && pnpm build"
+	},
+	"devDependencies": {
+		"@types/node": "^22.19.21",
+		"oxfmt": "^0.43.0",
+		"oxlint": "^1.58.0",
+		"typescript": "6.0.2",
+		"vitest": "^3.0.0"
+	},
+	"engines": {
+		"node": ">=20"
+	},
+	"packageManager": "pnpm@10.18.0"
+}
