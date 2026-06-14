@@ -5,12 +5,12 @@
 
 # tot.page
 
-Publish a page in one command. Any markdown or HTML file → a live link on <strong>tot.page</strong>. No signup.
+Publish a markdown or HTML file to a live link in one command. No signup.
 
 ```bash
 npm i -g @plannotator/tot
 ```
-Usage:
+
 ```
 tot notes.md
 → https://tot.page/aB3xK9qLm2_QsBOlkxoSt
@@ -20,28 +20,30 @@ tot notes.md
 
 | Command | What it does |
 |---|---|
-| `tot notes.md` | Publish markdown — rendered to a page. |
-| `tot page.html` | Publish HTML — served exactly as written. |
-| `tot update <link>` | Push new content — the same link updates. |
-| `tot list` | See everything you've published. |
-| `tot remove <link>` | Take a page back down. |
-| `tot login --key <key>` | Optional: publish as an owned account (else anonymous). |
+| `tot notes.md` | Publish markdown. It renders to a page. |
+| `tot page.html` | Publish HTML. It is served exactly as written. |
+| `tot update <link>` | Push new content. The same link updates. |
+| `tot list` | Show what you have published. |
+| `tot remove <link>` | Take a page down. |
+| `tot login --key <key>` | Optional. Publish as an owned account instead of anonymous. |
 
 ## How it works
 
-- **Markdown renders, HTML is served as-is.** Whatever you publish, that's what people see.
-- **Links are live.** Re-publish and the same `tot.page/...` link shows the latest — or use the frozen `@version` snapshot URL for a permanent capture that never changes.
-- **No accounts, no tokens.** The link is the key: anyone you give it to can view it.
+Markdown renders to a page. HTML is served byte for byte.
 
-> **Be intentional with the link.** A page you publish is *open* — anyone who has the link can also **edit or delete** it. There's no private mode and nothing to log into. Share the link with that in mind.
+Your link is live. Run `tot update` and the same `tot.page/...` link shows the new version. Every version also keeps a frozen `@hash` link that never changes, for when you want a fixed snapshot.
+
+No accounts, no tokens. The link is the key.
+
+> A page you publish is open. Anyone who has the link can view it, update it, or delete it. There is no private mode. Share the link with that in mind.
 
 ## Configuration
 
-State lives in `~/.tot` (the API endpoint and your list of published pages). Override the API origin per-run with `--endpoint <url>`.
+State lives in `~/.tot`: the API endpoint and the list of pages you have published. Override the API origin for one run with `--endpoint <url>`.
 
 ## Built on
 
-[Cloudflare Artifacts](https://www.cloudflare.com/products/artifacts/)
+[Cloudflare Artifacts](https://www.cloudflare.com/products/artifacts/). Every version is a real git commit.
 
 ## License
 
