@@ -35,17 +35,6 @@ tot notes.md
 | `tot remove <link>`     | Remove the living page from its share link.                                            |
 | `tot login --key <key>` | Optional. Publish as an owned account instead of anonymous.                            |
 
-## Why it exists
-
-Most "put this online" tools either render your markdown, hide the source behind an app, or give you
-a new URL every time you change something. `tot` is deliberately smaller:
-
-- Markdown and HTML are served raw, byte for byte.
-- The share link stays stable across updates.
-- Each update is still preserved as an immutable version.
-- HTML support files next to the page are uploaded first, so real HTML pages keep working.
-- No account is needed for the default flow; the link is the key.
-
 ## How it works
 
 Files are served byte for byte. Markdown comes back as raw markdown. HTML comes back as raw HTML.
@@ -58,7 +47,7 @@ Your link is live. Run `tot update` and the same `tot.page/...` link shows the n
 
 `tot remove` removes the living page. Frozen snapshot links are permanent while the workspace exists.
 
-No accounts, no tokens. The link is the key.
+No accounts, no tokens. The link is the key. Treat them as you would excalidraw.
 
 > A page you publish is open. Anyone who has the link can view it, update it, or delete it. There is no private mode. Share the link with that in mind.
 
