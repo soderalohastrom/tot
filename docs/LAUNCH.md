@@ -10,8 +10,8 @@ except production deploy.
 ## What's already done (no action needed)
 
 - `tot` CLI built, tested, pushed, and published as `@plannotator/tot@0.1.2`.
-- Version-less content route, raw-pipe serving, v5 text mirror, support assets, and MP4 range serving are built, tested, merged, and deployed to the staging-backed `tot.page` / `api.tot.page` soft-launch path.
-- Config wired: staging custom domains point `tot.page` at the content worker and `api.tot.page` at the API worker; production config exists but production is not launched.
+- Version-less content route, raw-pipe serving, v5 text mirror, support assets, and MP4 range serving are built, tested, merged, and deployed to the staging-backed `tot.page` content soft-launch path.
+- Domain contract wired/in flight: `staging.workspaces.plannotator.ai` is the staging Workspaces app/API/auth origin and `staging.tot.page` is the staging raw usercontent origin. `api.tot.page` is a temporary compatibility alias for already-published tot clients, not the canonical API host. Production config exists but production is not launched.
 - Takedown script: `~/workspaces/projects/workspaces/worktrees/main/scripts/takedown.sh`.
 - Architecture docs amended in `~/workspaces` (the meta root is intentionally not a git repo).
 
@@ -27,7 +27,7 @@ the product domains:
 ```bash
 cd ~/workspaces/projects/workspaces/worktrees/main
 WORKSPACES_API_TOKEN=<staging-api-token> pnpm verify:v5-live -- --env staging --r2-check --repair
-WORKSPACES_API_TOKEN=<staging-api-token> pnpm verify:v5-live -- --env staging --tot-page --r2-check --repair
+WORKSPACES_API_TOKEN=<staging-api-token> pnpm verify:v5-live -- --env staging --staging-domains --r2-check --repair
 ```
 
 Production deploy remains separate and gated.
@@ -56,7 +56,7 @@ cd ~/workspaces/projects/workspaces/worktrees/main/apps/usercontent
 wrangler deploy --env production     # creates the tot.page custom domain + DNS
 ```
 
-(You can test the whole flow on staging first — staging stays on `*.workers.dev`, no custom domain.)
+(You can test the whole flow on staging first with `staging.workspaces.plannotator.ai` and `staging.tot.page`; workers.dev remains a debug fallback.)
 
 ---
 

@@ -191,9 +191,10 @@ you must be able to remove illegal/abusive content). Minimal: a script/query, no
 ## 7. tot.page domain decision
 
 `tot.page` becomes the production content origin: set `USERCONTENT_ORIGIN=https://tot.page` in the
-app Worker's **production** env block only (staging stays on `*.workers.dev`), plus a Custom Domain
-route on the production content Worker. This is config, not code (`config.ts` reads the origin from
-env).
+app Worker's **production** env block, plus a Custom Domain route on the production content Worker.
+Staging uses `staging.workspaces.plannotator.ai` for the Workspaces API/app origin and
+`staging.tot.page` for raw usercontent; workers.dev remains a debug fallback. This is config, not
+code (`config.ts` reads the origin from env).
 
 - It is a **separate registrable domain** (not a subdomain of the app), so the cookie/SOP isolation
   the content origin exists for still holds. CI assertion: content origin's registrable domain ≠ app
@@ -230,18 +231,18 @@ env).
 
 ## 9. Work items
 
-| #   | Task                                                                                                                                                                           | Where                                                             | Effort | Launch-blocking                      |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------- | ------ | ------------------------------------ |
+| #   | Task                                                                                                                                                                           | Where                                                                                        | Effort | Launch-blocking                      |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- | ------ | ------------------------------------ |
 | 1   | tot CLI: publish (POST→poll), update (PUT), remove (DELETE), `~/.tot` registry, brand. Drop KV/Worker/marked.                                                                  | `~/workspaces/projects/tot/worktrees/main` (new `@plannotator/tot`, markdown-editor tooling) | M      | —                                    |
 | 1A  | tot CLI: scan HTML refs (`src`, `srcset`, `poster`, stylesheet/icon/preload/modulepreload links, script refs), upload support files first, commit HTML last; repeat on update. | `~/workspaces/projects/tot/worktrees/main`                                                   | M      | done; npm released                   |
-| 2   | Version-less raw-file route on the content Worker (§5)                                                                                                                         | `~/workspaces/projects/workspaces/worktrees/main` (usercontent)                                  | M      | **yes** (the living URL needs it)    |
-| 2A  | Widen asset MIME allowlist to CSS/JS/MP4, redirect active JS/SVG reads from `/v1`, and add MP4 range support on content serving.                                               | `~/workspaces/projects/workspaces/worktrees/main`                                                | S–M    | staging deployed; production pending |
-| 3   | Point production `USERCONTENT_ORIGIN`→`tot.page` + Custom Domain route; lock before first publish                                                                              | workspaces config + Cloudflare                                    | S      | **yes**                              |
-| 4   | Firewall rate-limit rules (read/create/update) + cost alert/kill-switch                                                                                                        | Cloudflare                                                        | S–M    | **yes**                              |
-| 5   | Takedown: admin "delete any page by id"                                                                                                                                        | workspaces (ops)                                                  | S      | **yes**                              |
-| 6   | Apply the doc updates in §8 (atomically — ARCHITECTURE + PRODUCT must agree)                                                                                                   | `~/workspaces`                                                     | S      | —                                    |
-| 7   | Empty-shell cleanup (delete workspaces left with no documents)                                                                                                                 | workspaces (platform)                                             | S      | no (defer; revisit at volume)        |
-| 8   | Old markdown-to-HTML task deleted; tot serves raw files                                                                                                                        | workspaces (usercontent)                                          | —      | done                                 |
+| 2   | Version-less raw-file route on the content Worker (§5)                                                                                                                         | `~/workspaces/projects/workspaces/worktrees/main` (usercontent)                              | M      | **yes** (the living URL needs it)    |
+| 2A  | Widen asset MIME allowlist to CSS/JS/MP4, redirect active JS/SVG reads from `/v1`, and add MP4 range support on content serving.                                               | `~/workspaces/projects/workspaces/worktrees/main`                                            | S–M    | staging deployed; production pending |
+| 3   | Point production `USERCONTENT_ORIGIN`→`tot.page` + Custom Domain route; lock before first publish                                                                              | workspaces config + Cloudflare                                                               | S      | **yes**                              |
+| 4   | Firewall rate-limit rules (read/create/update) + cost alert/kill-switch                                                                                                        | Cloudflare                                                                                   | S–M    | **yes**                              |
+| 5   | Takedown: admin "delete any page by id"                                                                                                                                        | workspaces (ops)                                                                             | S      | **yes**                              |
+| 6   | Apply the doc updates in §8 (atomically — ARCHITECTURE + PRODUCT must agree)                                                                                                   | `~/workspaces`                                                                               | S      | —                                    |
+| 7   | Empty-shell cleanup (delete workspaces left with no documents)                                                                                                                 | workspaces (platform)                                                                        | S      | no (defer; revisit at volume)        |
+| 8   | Old markdown-to-HTML task deleted; tot serves raw files                                                                                                                        | workspaces (usercontent)                                                                     | —      | done                                 |
 
 ---
 

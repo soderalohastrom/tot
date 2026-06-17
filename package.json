@@ -35,13 +35,15 @@
 	},
 	"scripts": {
 		"build": "tsc -p tsconfig.build.json",
+		"verify:contract": "node scripts/verify-domain-contract.mjs",
 		"lint": "oxlint",
 		"lint:fix": "oxlint --fix",
 		"format": "oxfmt --write .",
 		"format:check": "oxfmt --check .",
 		"typecheck": "tsc --noEmit -p tsconfig.json",
 		"test": "vitest run",
-		"prepublishOnly": "pnpm lint && pnpm typecheck && pnpm test && pnpm build"
+		"prepack": "pnpm build && pnpm verify:contract",
+		"prepublishOnly": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm verify:contract"
 	},
 	"dependencies": {
 		"parse5": "^8.0.1"

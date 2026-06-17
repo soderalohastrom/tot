@@ -2,10 +2,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-/** The /v1 API origin the CLI talks to. A branded alias (api.tot.page) so the
- * published package is decoupled from infra — repoint the DNS (staging → prod)
- * without republishing the CLI. */
-export const DEFAULT_ENDPOINT = "https://api.tot.page";
+/** The /v1 API origin the CLI talks to. The API is a Workspaces surface; tot.page
+ * remains the cookieless raw content origin. */
+export const DEFAULT_ENDPOINT = "https://workspaces.plannotator.ai";
 /** The public content origin where living pages are served (the link you share). */
 export const DEFAULT_CONTENT_ORIGIN = "https://tot.page";
 
