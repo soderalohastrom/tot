@@ -13,7 +13,7 @@ except production deploy.
 - Version-less content route, raw-pipe serving, v5 text mirror, support assets, and MP4 range serving are built, tested, merged, and deployed to the staging-backed `tot.page` / `api.tot.page` soft-launch path.
 - Config wired: staging custom domains point `tot.page` at the content worker and `api.tot.page` at the API worker; production config exists but production is not launched.
 - Takedown script: `~/workspaces/projects/workspaces/worktrees/main/scripts/takedown.sh`.
-- Architecture docs amended (`~/workspaces`, branch `docs/tot-page-amendments`).
+- Architecture docs amended in `~/workspaces` (the meta root is intentionally not a git repo).
 
 The code repos are on `main`; infra records are local in `~/workspaces`.
 
