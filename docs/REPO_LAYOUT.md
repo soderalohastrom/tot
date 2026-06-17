@@ -26,7 +26,7 @@ The npm package only publishes `dist/`; see `package.json` `files`.
 - `site/agents.md` - source for the published agent docs page.
 
 `site/landing.html` is embedded into Workspaces at
-`/Users/ramos/oss/workspaces/apps/usercontent/src/landing.ts`. Do not hand-edit that generated
+`/Users/ramos/workspaces/projects/workspaces/worktrees/main/apps/usercontent/src/landing.ts`. Do not hand-edit that generated
 file except through the embed/regeneration step.
 
 ## Assets

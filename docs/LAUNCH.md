@@ -9,13 +9,13 @@ except production deploy.
 
 ## What's already done (no action needed)
 
-- `tot` CLI built, tested, pushed, and published as `@plannotator/tot@0.1.1`.
+- `tot` CLI built, tested, pushed, and published as `@plannotator/tot@0.1.2`.
 - Version-less content route, raw-pipe serving, v5 text mirror, support assets, and MP4 range serving are built, tested, merged, and deployed to the staging-backed `tot.page` / `api.tot.page` soft-launch path.
 - Config wired: staging custom domains point `tot.page` at the content worker and `api.tot.page` at the API worker; production config exists but production is not launched.
-- Takedown script: `~/oss/workspaces/scripts/takedown.sh`.
-- Architecture docs amended (`~/oss/infra`, branch `docs/tot-page-amendments`).
+- Takedown script: `~/workspaces/projects/workspaces/worktrees/main/scripts/takedown.sh`.
+- Architecture docs amended (`~/workspaces`, branch `docs/tot-page-amendments`).
 
-The code repos are on `main`; infra records are local in `~/oss/infra`.
+The code repos are on `main`; infra records are local in `~/workspaces`.
 
 ---
 
@@ -25,7 +25,7 @@ Before any production launch, rerun the staging verifier against both workers.de
 the product domains:
 
 ```bash
-cd ~/oss/workspaces
+cd ~/workspaces/projects/workspaces/worktrees/main
 WORKSPACES_API_TOKEN=<staging-api-token> pnpm verify:v5-live -- --env staging --r2-check --repair
 WORKSPACES_API_TOKEN=<staging-api-token> pnpm verify:v5-live -- --env staging --tot-page --r2-check --repair
 ```
@@ -52,7 +52,7 @@ creates the domain + DNS automatically. **You must do this before the first prod
 (the origin is baked into every frozen `@sha` URL).
 
 ```bash
-cd ~/oss/workspaces/apps/usercontent
+cd ~/workspaces/projects/workspaces/worktrees/main/apps/usercontent
 wrangler deploy --env production     # creates the tot.page custom domain + DNS
 ```
 
@@ -103,14 +103,12 @@ do the front-line work.
 
 ## Step 5 — Publish the CLI to npm
 
-Current published release: `@plannotator/tot@0.1.1`.
-Next patch candidate: `@plannotator/tot@0.1.2`, which fixes npm-bin symlink
-entrypoint detection so `tot --help` runs when installed globally.
+Current published release: `@plannotator/tot@0.1.2`.
 
 Future patch releases use the same flow:
 
 ```bash
-cd ~/oss/totpage
+cd ~/workspaces/projects/tot/worktrees/main
 npm version patch --no-git-tag-version  # or edit package.json deliberately
 npm publish --access public
 ```
@@ -124,7 +122,7 @@ Anyone can: `npm install -g @plannotator/tot` → `tot notes.md`.
 Remove an abusive page by its slug (the part after `tot.page/`):
 
 ```bash
-cd ~/oss/workspaces
+cd ~/workspaces/projects/workspaces/worktrees/main
 scripts/takedown.sh production <slug>            # dry run — shows what it'd delete
 scripts/takedown.sh production <slug> --confirm  # actually delete (cascades)
 ```
@@ -139,4 +137,4 @@ It prints the cache-purge command to evict the cached copy immediately.
 2. Zone + token (Step 1).
 3. **Custom domain (Step 2) BEFORE any production page** — non-retrofittable.
 4. Rate limits + cost alert (Steps 3–4) **before** real traffic.
-5. npm publish (Step 5) is done for `@plannotator/tot@0.1.1`; repeat only for future patch releases.
+5. npm publish (Step 5) is done for `@plannotator/tot@0.1.2`; repeat only for future patch releases.

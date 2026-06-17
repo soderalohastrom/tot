@@ -1,11 +1,11 @@
 # tot — Build Spec
 
 **Status:** implementation built, focused tests passing, and npm-released as
-`@plannotator/tot@0.1.1`. Supersedes the deliberation record at
+`@plannotator/tot@0.1.2`. Supersedes the deliberation record at
 `~/plannotator/totpage/DESIGN.md` (kept for provenance). Production deploy remains separate.
 
-Every claim here was verified against the running platform (`~/oss/workspaces`) and the
-architecture of record (`~/oss/infra/research/ARCHITECTURE.md`). Verification notes are at the end.
+Every claim here was verified against the running platform (`~/workspaces/projects/workspaces/worktrees/main`) and the
+architecture of record (`~/workspaces/research/architecture/ARCHITECTURE.md`). Verification notes are at the end.
 
 ---
 
@@ -232,14 +232,14 @@ env).
 
 | #   | Task                                                                                                                                                                           | Where                                                             | Effort | Launch-blocking                      |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------- | ------ | ------------------------------------ |
-| 1   | tot CLI: publish (POST→poll), update (PUT), remove (DELETE), `~/.tot` registry, brand. Drop KV/Worker/marked.                                                                  | `~/oss/totpage` (new `@plannotator/tot`, markdown-editor tooling) | M      | —                                    |
-| 1A  | tot CLI: scan HTML refs (`src`, `srcset`, `poster`, stylesheet/icon/preload/modulepreload links, script refs), upload support files first, commit HTML last; repeat on update. | `~/oss/totpage`                                                   | M      | done; npm released                   |
-| 2   | Version-less raw-file route on the content Worker (§5)                                                                                                                         | `~/oss/workspaces` (usercontent)                                  | M      | **yes** (the living URL needs it)    |
-| 2A  | Widen asset MIME allowlist to CSS/JS/MP4, redirect active JS/SVG reads from `/v1`, and add MP4 range support on content serving.                                               | `~/oss/workspaces`                                                | S–M    | staging deployed; production pending |
+| 1   | tot CLI: publish (POST→poll), update (PUT), remove (DELETE), `~/.tot` registry, brand. Drop KV/Worker/marked.                                                                  | `~/workspaces/projects/tot/worktrees/main` (new `@plannotator/tot`, markdown-editor tooling) | M      | —                                    |
+| 1A  | tot CLI: scan HTML refs (`src`, `srcset`, `poster`, stylesheet/icon/preload/modulepreload links, script refs), upload support files first, commit HTML last; repeat on update. | `~/workspaces/projects/tot/worktrees/main`                                                   | M      | done; npm released                   |
+| 2   | Version-less raw-file route on the content Worker (§5)                                                                                                                         | `~/workspaces/projects/workspaces/worktrees/main` (usercontent)                                  | M      | **yes** (the living URL needs it)    |
+| 2A  | Widen asset MIME allowlist to CSS/JS/MP4, redirect active JS/SVG reads from `/v1`, and add MP4 range support on content serving.                                               | `~/workspaces/projects/workspaces/worktrees/main`                                                | S–M    | staging deployed; production pending |
 | 3   | Point production `USERCONTENT_ORIGIN`→`tot.page` + Custom Domain route; lock before first publish                                                                              | workspaces config + Cloudflare                                    | S      | **yes**                              |
 | 4   | Firewall rate-limit rules (read/create/update) + cost alert/kill-switch                                                                                                        | Cloudflare                                                        | S–M    | **yes**                              |
 | 5   | Takedown: admin "delete any page by id"                                                                                                                                        | workspaces (ops)                                                  | S      | **yes**                              |
-| 6   | Apply the doc updates in §8 (atomically — ARCHITECTURE + PRODUCT must agree)                                                                                                   | `~/oss/infra`                                                     | S      | —                                    |
+| 6   | Apply the doc updates in §8 (atomically — ARCHITECTURE + PRODUCT must agree)                                                                                                   | `~/workspaces`                                                     | S      | —                                    |
 | 7   | Empty-shell cleanup (delete workspaces left with no documents)                                                                                                                 | workspaces (platform)                                             | S      | no (defer; revisit at volume)        |
 | 8   | Old markdown-to-HTML task deleted; tot serves raw files                                                                                                                        | workspaces (usercontent)                                          | —      | done                                 |
 
@@ -283,6 +283,6 @@ cheap on Cloudflare, update-in-place.
   `~/plannotator/totpage/original_prompt.md`. The version-less updatable URL matches the prototype's
   mutable-URL mental model; the ownership model is the one deliberate divergence (§10).
 - V1 support-file implementation verified with `pnpm lint`, `pnpm typecheck`, `pnpm test`, and
-  `pnpm build` in `~/oss/totpage`; Workspaces support behavior verified with focused app/usercontent
-  typechecks and tests in `~/oss/workspaces`. npm release is complete as `@plannotator/tot@0.1.1`;
+  `pnpm build` in `~/workspaces/projects/tot/worktrees/main`; Workspaces support behavior verified with focused app/usercontent
+  typechecks and tests in `~/workspaces/projects/workspaces/worktrees/main`. npm release is complete as `@plannotator/tot@0.1.2`;
   production deploy remains separate.
