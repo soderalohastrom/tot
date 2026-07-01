@@ -286,6 +286,157 @@ describe("publish", () => {
 	});
 });
 
+describe("auto-image (og banner)", () => {
+	it("publish: --title with no --image auto-generates and uploads a banner", async () => {
+		const file = writeFile("page.html", "<h1>Hi</h1>");
+		const cfg = Config.load();
+		const http = stubHttp((call): HttpResponse => {
+			if (call.path === "/v1/workspaces") {
+				return jsonResponse(201, { workspace: { id: "ws_auto", slug: "slugAuto", visibility: "open" } });
+			}
+			if (call.path.startsWith("/v1/workspaces/ws_auto/assets/")) {
+				return jsonResponse(200, {});
+			}
+			if (call.path === "/v1/workspaces/ws_auto/documents") {
+				return jsonResponse(201, {
+					id: "doc_auto",
+					workspace_id: "ws_auto",
+					doc_path: "page.html",
+					version: "v1",
+				});
+			}
+			throw new Error("unexpected " + call.method + " " + call.path);
+		});
+
+		await publishCommand(file, cfg, makeDeps(http), { og: { title: "Common Cat Breeds" } });
+
+		expect(http.calls.map((call) => `${call.method} ${call.path}`)).toEqual([
+			"POST /v1/workspaces",
+			"PUT /v1/workspaces/ws_auto/assets/__tot-og-image.png",
+			"POST /v1/workspaces/ws_auto/documents",
+		]);
+		expect(http.calls[1].headers?.["content-type"]).toBe("image/png");
+		const documentBody = JSON.parse(String(http.calls[2].body));
+		expect(documentBody.body).toContain(
+			'<meta property="og:image" content="https://tot.page/slugAuto/__tot-og-image.png" />',
+		);
+		expect(cfg.getEntryByFile(file)?.assets).toHaveProperty("__tot-og-image.png");
+	});
+
+	it("publish: an explicit --image skips banner generation entirely", async () => {
+		const file = writeFile("page.html", "<h1>Hi</h1>");
+		const http = stubHttp((call): HttpResponse => {
+			if (call.method === "POST") {
+				return jsonResponse(201, {
+					document: { id: "doc_1", workspace_id: "ws_1", doc_path: "index.html", version: "v1" },
+					workspace: { id: "ws_1", slug: "slugExplicit", visibility: "open" },
+				});
+			}
+			throw new Error("unexpected " + call.method + " " + call.path);
+		});
+
+		await publishCommand(file, Config.load(), makeDeps(http), {
+			og: { title: "Common Cat Breeds", image: "https://example.com/mine.png" },
+		});
+
+		expect(http.calls.map((call) => `${call.method} ${call.path}`)).toEqual(["POST /v1/documents"]);
+		const documentBody = JSON.parse(String(http.calls[0].body));
+		expect(documentBody.body).toContain('content="https://example.com/mine.png"');
+	});
+
+	it("publish: --no-image suppresses auto-generation, leaving no og:image tag", async () => {
+		const file = writeFile("page.html", "<h1>Hi</h1>");
+		const http = stubHttp((call): HttpResponse => {
+			if (call.method === "POST") {
+				return jsonResponse(201, {
+					document: { id: "doc_1", workspace_id: "ws_1", doc_path: "index.html", version: "v1" },
+					workspace: { id: "ws_1", slug: "slugNoImage", visibility: "open" },
+				});
+			}
+			throw new Error("unexpected " + call.method + " " + call.path);
+		});
+
+		await publishCommand(file, Config.load(), makeDeps(http), {
+			og: { title: "Common Cat Breeds" },
+			noAutoImage: true,
+		});
+
+		expect(http.calls.map((call) => `${call.method} ${call.path}`)).toEqual(["POST /v1/documents"]);
+		const documentBody = JSON.parse(String(http.calls[0].body));
+		expect(documentBody.body).not.toContain("og:image");
+	});
+
+	it("update: --title with no --image auto-generates a banner using the known slug", async () => {
+		const file = writeFile("page.html", "<h1>Hi</h1>");
+		const cfg = Config.load();
+		cfg.addEntry(file, {
+			wsId: "ws_upd",
+			docId: "doc_upd",
+			slug: "slugUpd",
+			url: "https://tot.page/slugUpd/page.html",
+			kind: "html",
+			docPath: "page.html",
+			bytes: 1,
+			createdAt: "2026-06-07T18:24:00Z",
+		});
+
+		const http = stubHttp((call): HttpResponse => {
+			if (call.path.startsWith("/v1/workspaces/ws_upd/assets/")) {
+				return jsonResponse(200, {});
+			}
+			if (call.path === "/v1/workspaces/ws_upd/documents/doc_upd") {
+				return jsonResponse(200, { id: "doc_upd", doc_path: "page.html", version: "v2" });
+			}
+			throw new Error("unexpected " + call.method + " " + call.path);
+		});
+
+		await updateCommand(file, cfg, makeDeps(http), { og: { title: "Common Cat Breeds" } });
+
+		expect(http.calls.map((call) => `${call.method} ${call.path}`)).toEqual([
+			"PUT /v1/workspaces/ws_upd/assets/__tot-og-image.png",
+			"PUT /v1/workspaces/ws_upd/documents/doc_upd",
+		]);
+		const putBody = String(http.calls[1].body);
+		expect(putBody).toContain(
+			'<meta property="og:image" content="https://tot.page/slugUpd/__tot-og-image.png" />',
+		);
+		// og:url auto-fills from the already-known living URL.
+		expect(putBody).toContain('<meta property="og:url" content="https://tot.page/slugUpd/page.html" />');
+	});
+
+	it("update: re-running with the same title/description does not re-upload the unchanged banner", async () => {
+		const file = writeFile("page.html", "<h1>Hi</h1>");
+		const cfg = Config.load();
+		cfg.addEntry(file, {
+			wsId: "ws_dedup",
+			docId: "doc_dedup",
+			slug: "slugDedup",
+			url: "https://tot.page/slugDedup/page.html",
+			kind: "html",
+			docPath: "page.html",
+			bytes: 1,
+			createdAt: "2026-06-07T18:24:00Z",
+		});
+
+		const http = stubHttp((call): HttpResponse => {
+			if (call.path.startsWith("/v1/workspaces/ws_dedup/assets/")) {
+				return jsonResponse(200, {});
+			}
+			if (call.path === "/v1/workspaces/ws_dedup/documents/doc_dedup") {
+				return jsonResponse(200, { id: "doc_dedup", doc_path: "page.html", version: "v2" });
+			}
+			throw new Error("unexpected " + call.method + " " + call.path);
+		});
+
+		const og = { title: "Common Cat Breeds", description: "Same every time" };
+		await updateCommand(file, cfg, makeDeps(http), { og });
+		await updateCommand(file, cfg, makeDeps(http), { og });
+
+		const assetPuts = http.calls.filter((call) => call.path.includes("/assets/__tot-og-image.png"));
+		expect(assetPuts).toHaveLength(1); // second run's sha256 matched the registry, so it was skipped
+	});
+});
+
 describe("URL helpers", () => {
 	it("encodes non-index document path segments in living and frozen URLs", () => {
 		expect(livingUrl("https://tot.page/", "slug", "my page.html")).toBe(

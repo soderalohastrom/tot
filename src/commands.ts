@@ -9,6 +9,7 @@ import {
 	validWorkspacePath,
 	type HtmlAssetRef,
 } from "./asset-refs.js";
+import { renderBannerPng } from "./banner.js";
 import type { Config, RegistryAssetEntry, RegistryEntry } from "./config.js";
 import {
 	deleteDocument,
@@ -21,6 +22,7 @@ import {
 	putAsset,
 	putDocument,
 } from "./http.js";
+import { injectOpenGraph, type OgMeta } from "./og.js";
 
 /** Injected side-effects, so commands stay testable (no real clock, no console). */
 export interface CommandDeps {
@@ -44,6 +46,70 @@ interface PreparedAssetRef extends HtmlAssetRef {
 export interface PublishOpts {
 	/** Override the detected kind (rarely needed; extension wins by default). */
 	kind?: "markdown" | "html";
+	/** Open Graph / Twitter Card metadata to inject into <head> before upload (html only). */
+	og?: OgMeta;
+	/** Skip auto-generating an og:image banner when `og.title` is set but `og.image` isn't. */
+	noAutoImage?: boolean;
+}
+
+// Namespaced (not "og-image.png") to make collision with a real content asset
+// of the same name effectively impossible.
+const AUTO_BANNER_ASSET_PATH = "__tot-og-image.png";
+
+function assertOgRequiresHtml(kind: "markdown" | "html", og: OgMeta | undefined): void {
+	if (og !== undefined && kind !== "html") {
+		throw new Error(
+			"--title/--description/--image/--url require an .html file (markdown is published raw)",
+		);
+	}
+}
+
+function applyOgMeta(body: string, og: OgMeta | undefined): string {
+	return og === undefined ? body : injectOpenGraph(body, og);
+}
+
+function stripTrailingSlash(origin: string): string {
+	return origin.replace(/\/+$/, "");
+}
+
+function assetUrl(contentOrigin: string, slug: string, assetPath: string): string {
+	return `${stripTrailingSlash(contentOrigin)}/${slug}/${encodeWorkspacePath(assetPath)}`;
+}
+
+function prepareBannerAsset(png: Buffer): PreparedAssetRef {
+	return {
+		ref: "(generated og:image banner)",
+		assetPath: AUTO_BANNER_ASSET_PATH,
+		localPath: "",
+		contentType: "image/png",
+		bytes: png,
+		sha256: createHash("sha256").update(png).digest("hex"),
+		size: png.byteLength,
+	};
+}
+
+/**
+ * Auto-generates a title/description banner and resolves `og.image` to its
+ * eventual public URL — unless the caller already gave an explicit `--image`
+ * or opted out with `--no-image`. `slug` must already be known (an existing
+ * page on update, or a just-created workspace on a fresh publish).
+ */
+function resolveAutoImage(
+	og: OgMeta | undefined,
+	noAutoImage: boolean | undefined,
+	contentOrigin: string,
+	slug: string,
+): { og: OgMeta | undefined; bannerAsset: PreparedAssetRef | null } {
+	if (og === undefined || og.image !== undefined || noAutoImage === true) {
+		return { og, bannerAsset: null };
+	}
+	const bannerAsset = prepareBannerAsset(
+		renderBannerPng({ title: og.title, description: og.description }),
+	);
+	return {
+		og: { ...og, image: assetUrl(contentOrigin, slug, bannerAsset.assetPath) },
+		bannerAsset,
+	};
 }
 
 function detectKind(file: string): "markdown" | "html" {
@@ -61,7 +127,7 @@ function contentTypeFor(kind: "markdown" | "html"): string {
  * (mirrors `/s/{slug}`); anything else appends the doc path.
  */
 export function livingUrl(contentOrigin: string, slug: string, docPath: string): string {
-	const base = contentOrigin.replace(/\/+$/, "");
+	const base = stripTrailingSlash(contentOrigin);
 	if (docPath === "index.md" || docPath === "index.html") {
 		return `${base}/${slug}`;
 	}
@@ -75,7 +141,7 @@ export function frozenUrl(
 	docPath: string,
 	version: string,
 ): string {
-	const base = contentOrigin.replace(/\/+$/, "");
+	const base = stripTrailingSlash(contentOrigin);
 	return `${base}/${slug}/${encodeWorkspacePath(docPath)}@${version}`;
 }
 
@@ -98,11 +164,25 @@ export async function publishCommand(
 	if (!fs.existsSync(file)) {
 		throw new Error(`file not found: ${file}`);
 	}
-	const body = fs.readFileSync(file, "utf8");
 	const kind = opts.kind ?? detectKind(file);
+	assertOgRequiresHtml(kind, opts.og);
+
+	// A fresh publish doesn't have a slug yet, and og:image needs an absolute
+	// URL baked into the HTML before upload — so when auto-image applies, the
+	// workspace has to be created early just to learn its slug.
+	let og = opts.og;
+	let bannerAsset: PreparedAssetRef | null = null;
+	let preWs: { wsId: string; slug: string } | null = null;
+	if (og !== undefined && og.image === undefined && opts.noAutoImage !== true) {
+		const workspace = await postWorkspace(deps.http);
+		preWs = { wsId: workspace.id, slug: workspace.slug };
+		({ og, bannerAsset } = resolveAutoImage(og, opts.noAutoImage, cfg.contentOrigin, preWs.slug));
+	}
+
+	const body = applyOgMeta(fs.readFileSync(file, "utf8"), og);
 	const assetRefs = collectAssetsForPublish(kind, body, file);
-	const targetDocPath = assetRefs.length > 0 ? publishDocPath(file) : null;
-	const assets = prepareAssetRefs(assetRefs);
+	const assets = prepareAssetRefs(assetRefs).concat(bannerAsset === null ? [] : [bannerAsset]);
+	const targetDocPath = assets.length > 0 ? publishDocPath(file) : null;
 
 	let wsId: string;
 	let docId: string;
@@ -111,7 +191,7 @@ export async function publishCommand(
 	let version: string | null;
 	let fileUrl: string | null;
 
-	if (assetRefs.length === 0) {
+	if (assets.length === 0) {
 		const created = await postDocument(deps.http, kind, body);
 		wsId = created.workspace.id;
 		docId = created.document.id;
@@ -123,9 +203,14 @@ export async function publishCommand(
 		if (targetDocPath === null) {
 			throw new Error("internal error: missing target document path for HTML assets publish");
 		}
-		const workspace = await postWorkspace(deps.http);
-		wsId = workspace.id;
-		slug = workspace.slug;
+		if (preWs !== null) {
+			wsId = preWs.wsId;
+			slug = preWs.slug;
+		} else {
+			const workspace = await postWorkspace(deps.http);
+			wsId = workspace.id;
+			slug = workspace.slug;
+		}
 		await uploadAssetRefs(deps.http, wsId, assets);
 		const document = await postWorkspaceDocument(deps.http, wsId, targetDocPath, kind, body);
 		docId = document.id;
@@ -179,7 +264,12 @@ export async function publishCommand(
  * `tot update <file|url>` — push new content under the same living URL.
  * Resolves {wsId, docId} from the local registry, then PUTs the raw body.
  */
-export async function updateCommand(target: string, cfg: Config, deps: CommandDeps): Promise<void> {
+export async function updateCommand(
+	target: string,
+	cfg: Config,
+	deps: CommandDeps,
+	opts: PublishOpts = {},
+): Promise<void> {
 	const resolved = cfg.resolve(target);
 	if (!resolved) {
 		throw new Error(`not in your registry: ${target} (publish it first, or run 'tot list')`);
@@ -201,9 +291,21 @@ export async function updateCommand(target: string, cfg: Config, deps: CommandDe
 				`${where} is missing — pass the path to the current content`,
 		);
 	}
-	const body = fs.readFileSync(file, "utf8");
+	assertOgRequiresHtml(entry.kind, opts.og);
+
+	// og:url defaults to the page's already-known living URL, and (unlike a
+	// fresh publish) the slug already exists, so auto-image can resolve right
+	// here with no extra workspace-creation round trip.
+	const ogWithUrl = opts.og === undefined ? undefined : { url: entry.url, ...opts.og };
+	const { og, bannerAsset } = resolveAutoImage(
+		ogWithUrl,
+		opts.noAutoImage,
+		cfg.contentOrigin,
+		entry.slug,
+	);
+	const body = applyOgMeta(fs.readFileSync(file, "utf8"), og);
 	const assetRefs = collectAssetsForPublish(entry.kind, body, file);
-	const assets = prepareAssetRefs(assetRefs);
+	const assets = prepareAssetRefs(assetRefs).concat(bannerAsset === null ? [] : [bannerAsset]);
 	await uploadAssetRefs(
 		deps.http,
 		entry.wsId,

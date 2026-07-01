@@ -12,6 +12,7 @@ import {
 } from "./commands.js";
 import { Config } from "./config.js";
 import { createHttpClient } from "./http.js";
+import type { OgMeta } from "./og.js";
 
 interface ParsedArgs {
 	_: string[];
@@ -52,9 +53,31 @@ const HELP = `tot — publish a page to tot.page
   tot login --key <KEY>   save a pre-minted wsk_live_ key to ~/.tot (optional)
 
 flags
-  --endpoint <url>   override the API origin (default https://workspaces.plannotator.ai)
-  --key <KEY>        API key for this run (login persists it)
-  --help             show this help`;
+  --endpoint <url>     override the API origin (default https://workspaces.plannotator.ai)
+  --key <KEY>          API key for this run (login persists it)
+  --title <text>       inject <title>/og:title/twitter:title into an .html file's <head>
+  --description <text> inject description/og:description/twitter:description
+  --image <url>        inject og:image/twitter:image (absolute https URL)
+  --no-image           skip auto-generating a title/description banner when --title is set
+  --url <url>          inject og:url (on 'update' this defaults to the page's living URL)
+  --help               show this help
+
+Passing --title without --image auto-generates a colored 1200×630 banner
+(title + description) and publishes it as the og:image/twitter:image.`;
+
+function ogMetaFromFlags(flags: Record<string, string | true>): OgMeta | undefined {
+	const title = flagStr(flags, "title");
+	const description = flagStr(flags, "description");
+	const image = flagStr(flags, "image");
+	const url = flagStr(flags, "url");
+	if (title === undefined) {
+		if (description !== undefined || image !== undefined || url !== undefined) {
+			throw new Error("--title is required when passing --description/--image/--url");
+		}
+		return undefined;
+	}
+	return { title, description, image, url };
+}
 
 function makeDeps(cfg: Config): CommandDeps {
 	return {
@@ -106,7 +129,10 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
 			console.error("usage: tot update <file|url>");
 			return 1;
 		}
-		await updateCommand(target, cfg, deps);
+		await updateCommand(target, cfg, deps, {
+			og: ogMetaFromFlags(args.flags),
+			noAutoImage: args.flags["no-image"] === true,
+		});
 		return 0;
 	}
 
@@ -121,7 +147,10 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
 	}
 
 	// Default: the first positional is a file to publish.
-	await publishCommand(cmd, cfg, deps);
+	await publishCommand(cmd, cfg, deps, {
+		og: ogMetaFromFlags(args.flags),
+		noAutoImage: args.flags["no-image"] === true,
+	});
 	return 0;
 }
 
