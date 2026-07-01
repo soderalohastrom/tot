@@ -4,7 +4,7 @@
   <sub><a href="https://tot.page">tot.page</a> is what enables <a href="https://plannotator.ai/workspaces">Plannotator Workspaces</a></sub>
 </p>
 
-# tot.page
+# Scott's tot.page
 
 Publish a markdown or HTML file to a live link in one command. No signup.
 
