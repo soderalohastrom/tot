@@ -280,7 +280,11 @@ async function syncOneTot(
 	return {
 		tot: {
 			id: entry.slug,
-			title: documentTitle || dashboardTitleFromFile(file, docPath) || "Untitled Tot",
+			title:
+				entry.displayTitle ||
+				documentTitle ||
+				dashboardTitleFromFile(file, docPath) ||
+				"Untitled Tot",
 			file: path.basename(file),
 			url: `${endpoint}${mirrorPath}`,
 			originalUrl: entry.url,
@@ -314,7 +318,7 @@ export async function syncCloudDashboard(
 ): Promise<CloudSyncResult> {
 	const endpoint = normalizedEndpoint(options.endpoint);
 	if (!options.token) throw new Error("cloud sync token is required");
-	const entries = Object.entries(options.registry);
+	const entries = Object.entries(options.registry).filter(([, entry]) => entry.hidden !== true);
 	const generatedAt = deps.now().toISOString();
 	const previousResponse = await deps.fetch(`${endpoint}/api/sync/manifest`, {
 		headers: syncRequestHeaders(options.token, options.access),

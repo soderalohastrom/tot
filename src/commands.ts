@@ -10,7 +10,7 @@ import {
 	type HtmlAssetRef,
 } from "./asset-refs.js";
 import { renderBannerPng } from "./banner.js";
-import type { Config, RegistryAssetEntry, RegistryEntry } from "./config.js";
+import { Config, type RegistryAssetEntry, type RegistryEntry } from "./config.js";
 import {
 	deleteDocument,
 	getDocument,
@@ -176,7 +176,12 @@ export async function publishCommand(
 	if (og !== undefined && og.image === undefined && opts.noAutoImage !== true) {
 		const workspace = await postWorkspace(deps.http);
 		preWs = { wsId: workspace.id, slug: workspace.slug };
-		({ og, bannerAsset } = resolveAutoImage(og, opts.noAutoImage, cfg.contentOrigin, preWs.slug));
+		({ og, bannerAsset } = resolveAutoImage(
+			og,
+			opts.noAutoImage,
+			cfg.contentOrigin,
+			preWs.slug,
+		));
 	}
 
 	const body = applyOgMeta(fs.readFileSync(file, "utf8"), og);
@@ -427,8 +432,13 @@ export async function removeCommand(target: string, cfg: Config, deps: CommandDe
 	const { entry } = resolved;
 
 	await deleteDocument(deps.http, entry.wsId, entry.docId);
+	// The remote delete can overlap another process writing ~/.tot. Re-load before
+	// the atomic save so a stale command-start snapshot never erases those writes.
+	const latest = Config.load();
+	latest.removeEntry(entry.wsId, entry.docId);
+	latest.save();
+	// Keep the caller's in-memory object coherent without persisting it again.
 	cfg.removeEntry(entry.wsId, entry.docId);
-	cfg.save();
 
 	deps.log(`removed  ${entry.url}`);
 }

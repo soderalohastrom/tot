@@ -51,7 +51,7 @@ describe("config", () => {
 	// (the file may hold an API key — it must not be world-readable).
 	it("save then reload persists entries; file is mode 0600", () => {
 		const cfg = Config.load();
-		cfg.addEntry("notes.md", entry());
+		cfg.addEntry("notes.md", entry({ displayTitle: "Field Notes", hidden: true }));
 		cfg.key = "wsk_live_secret";
 		cfg.save();
 
@@ -61,6 +61,30 @@ describe("config", () => {
 		const reloaded = Config.load();
 		expect(reloaded.key).toBe("wsk_live_secret");
 		expect(reloaded.getEntryByFile("notes.md")?.slug).toBe("slug1");
+		expect(reloaded.getEntryByFile("notes.md")).toMatchObject({
+			displayTitle: "Field Notes",
+			hidden: true,
+		});
+	});
+
+	it("updates dashboard metadata by slug without changing the published document identity", () => {
+		const cfg = Config.load();
+		cfg.addEntry("notes.md", entry());
+
+		expect(
+			cfg.updateDashboardEntry("slug1", { displayTitle: "Team Notes", hidden: true }),
+		).toBe(true);
+		expect(cfg.updateDashboardEntry("missing", { hidden: true })).toBe(false);
+		expect(cfg.getEntryByFile("notes.md")).toMatchObject({
+			wsId: "ws_1",
+			docId: "doc_1",
+			displayTitle: "Team Notes",
+			hidden: true,
+		});
+
+		expect(cfg.updateDashboardEntry("slug1", { displayTitle: null, hidden: false })).toBe(true);
+		expect(cfg.getEntryByFile("notes.md")?.displayTitle).toBeUndefined();
+		expect(cfg.getEntryByFile("notes.md")?.hidden).toBe(false);
 	});
 
 	// Catches: registry lookup failing by slug or by full living URL — both are

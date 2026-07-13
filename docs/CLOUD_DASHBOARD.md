@@ -88,6 +88,8 @@ Unchanged Tots retain their original `syncedAt` value. If the complete catalog i
 
 The public manifest includes display names, original URLs, mirror URLs, content hashes, sizes, timestamps, and asset paths. It excludes local directory paths, API keys, Workspace IDs, and document IDs.
 
+Rename and visibility controls are intentionally localhost-only. A custom display name is stored as dashboard metadata in `~/.tot`; it does not rename the source file or alter the published document. Hiding a Tot also changes only local metadata: the original `tot.page` remains alive and the entry can be restored through **Show hidden**. The next scheduled reconciliation omits hidden entries and publishes custom display names to the Cloudflare manifest. Permanent deletion uses the existing Workspaces deletion API and removes the local registry entry.
+
 ## Hostinger backup
 
 The production VPS units live in [`deploy/hostinger`](../deploy/hostinger/README.md).

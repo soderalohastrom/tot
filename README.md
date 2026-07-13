@@ -60,14 +60,14 @@ Run the dashboard from this repository or an installed package:
 tot dashboard
 ```
 
-It opens `http://127.0.0.1:4173` with card and list views, fuzzy search, live page previews, a reading panel, automatic registry refresh, and light/dark themes. The browser receives a sanitized projection of `~/.tot`; API keys and workspace/document IDs are never included.
+It opens `http://127.0.0.1:4173` with card and list views, fuzzy search, live page previews, a reading panel, automatic registry refresh, and light/dark themes. In card view, hover or focus a Tot to rename it, hide it from both dashboards, or permanently delete the published page. Hidden Tots remain registered and published; use **Show hidden** to restore them. The browser receives a sanitized projection of `~/.tot`; API keys and workspace/document IDs are never included.
 
 ```bash
 tot dashboard --port 4400 --no-open
 tot dashboard --host 0.0.0.0 # explicit LAN binding
 ```
 
-The default loopback binding is intentional. The current dashboard includes local source paths and has no authentication, so do not expose it directly to the internet. A public deployment should use a separate sanitized data source or export step while reusing the static frontend.
+The default loopback binding is intentional. Dashboard mutations require an ephemeral token issued only to the local page and are rejected for non-loopback clients; management is disabled entirely when `--host` binds beyond loopback. The local dashboard is not a multi-user authenticated service and should not be exposed directly to the internet. The Cloudflare mirror reuses the interface with management controls disabled.
 
 ### Cloud mirror and backup
 

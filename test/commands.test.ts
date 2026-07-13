@@ -292,7 +292,9 @@ describe("auto-image (og banner)", () => {
 		const cfg = Config.load();
 		const http = stubHttp((call): HttpResponse => {
 			if (call.path === "/v1/workspaces") {
-				return jsonResponse(201, { workspace: { id: "ws_auto", slug: "slugAuto", visibility: "open" } });
+				return jsonResponse(201, {
+					workspace: { id: "ws_auto", slug: "slugAuto", visibility: "open" },
+				});
 			}
 			if (call.path.startsWith("/v1/workspaces/ws_auto/assets/")) {
 				return jsonResponse(200, {});
@@ -328,7 +330,12 @@ describe("auto-image (og banner)", () => {
 		const http = stubHttp((call): HttpResponse => {
 			if (call.method === "POST") {
 				return jsonResponse(201, {
-					document: { id: "doc_1", workspace_id: "ws_1", doc_path: "index.html", version: "v1" },
+					document: {
+						id: "doc_1",
+						workspace_id: "ws_1",
+						doc_path: "index.html",
+						version: "v1",
+					},
 					workspace: { id: "ws_1", slug: "slugExplicit", visibility: "open" },
 				});
 			}
@@ -339,7 +346,9 @@ describe("auto-image (og banner)", () => {
 			og: { title: "Common Cat Breeds", image: "https://example.com/mine.png" },
 		});
 
-		expect(http.calls.map((call) => `${call.method} ${call.path}`)).toEqual(["POST /v1/documents"]);
+		expect(http.calls.map((call) => `${call.method} ${call.path}`)).toEqual([
+			"POST /v1/documents",
+		]);
 		const documentBody = JSON.parse(String(http.calls[0].body));
 		expect(documentBody.body).toContain('content="https://example.com/mine.png"');
 	});
@@ -349,7 +358,12 @@ describe("auto-image (og banner)", () => {
 		const http = stubHttp((call): HttpResponse => {
 			if (call.method === "POST") {
 				return jsonResponse(201, {
-					document: { id: "doc_1", workspace_id: "ws_1", doc_path: "index.html", version: "v1" },
+					document: {
+						id: "doc_1",
+						workspace_id: "ws_1",
+						doc_path: "index.html",
+						version: "v1",
+					},
 					workspace: { id: "ws_1", slug: "slugNoImage", visibility: "open" },
 				});
 			}
@@ -361,7 +375,9 @@ describe("auto-image (og banner)", () => {
 			noAutoImage: true,
 		});
 
-		expect(http.calls.map((call) => `${call.method} ${call.path}`)).toEqual(["POST /v1/documents"]);
+		expect(http.calls.map((call) => `${call.method} ${call.path}`)).toEqual([
+			"POST /v1/documents",
+		]);
 		const documentBody = JSON.parse(String(http.calls[0].body));
 		expect(documentBody.body).not.toContain("og:image");
 	});
@@ -401,7 +417,9 @@ describe("auto-image (og banner)", () => {
 			'<meta property="og:image" content="https://tot.page/slugUpd/__tot-og-image.png" />',
 		);
 		// og:url auto-fills from the already-known living URL.
-		expect(putBody).toContain('<meta property="og:url" content="https://tot.page/slugUpd/page.html" />');
+		expect(putBody).toContain(
+			'<meta property="og:url" content="https://tot.page/slugUpd/page.html" />',
+		);
 	});
 
 	it("update: re-running with the same title/description does not re-upload the unchanged banner", async () => {
@@ -432,7 +450,9 @@ describe("auto-image (og banner)", () => {
 		await updateCommand(file, cfg, makeDeps(http), { og });
 		await updateCommand(file, cfg, makeDeps(http), { og });
 
-		const assetPuts = http.calls.filter((call) => call.path.includes("/assets/__tot-og-image.png"));
+		const assetPuts = http.calls.filter((call) =>
+			call.path.includes("/assets/__tot-og-image.png"),
+		);
 		expect(assetPuts).toHaveLength(1); // second run's sha256 matched the registry, so it was skipped
 	});
 });
@@ -671,6 +691,42 @@ describe("remove", () => {
 		expect(seen?.method).toBe("DELETE");
 		expect(seen?.path).toBe("/v1/workspaces/ws_5/documents/doc_5");
 		expect(cfg.getEntryByFile("notes.md")).toBeNull();
+	});
+
+	it("preserves registry entries written concurrently while remote deletion is in flight", async () => {
+		const cfg = Config.load();
+		cfg.addEntry("remove.md", {
+			wsId: "ws_remove",
+			docId: "doc_remove",
+			slug: "remove",
+			url: "https://tot.page/remove",
+			kind: "markdown",
+			docPath: "index.md",
+			bytes: 1,
+			createdAt: "2026-06-07T18:24:00Z",
+		});
+		cfg.save();
+		const http = stubHttp((): HttpResponse => {
+			const concurrent = Config.load();
+			concurrent.addEntry("keep.md", {
+				wsId: "ws_keep",
+				docId: "doc_keep",
+				slug: "keep",
+				url: "https://tot.page/keep",
+				kind: "markdown",
+				docPath: "index.md",
+				bytes: 1,
+				createdAt: "2026-07-13T18:24:00Z",
+			});
+			concurrent.save();
+			return emptyResponse(204);
+		});
+
+		await removeCommand("remove.md", cfg, makeDeps(http));
+
+		const persisted = Config.load();
+		expect(persisted.getEntryBySlug("remove")).toBeNull();
+		expect(persisted.getEntryBySlug("keep")).not.toBeNull();
 	});
 });
 

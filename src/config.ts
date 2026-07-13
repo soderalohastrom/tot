@@ -18,6 +18,15 @@ export interface RegistryEntry {
 	bytes: number;
 	assets?: Record<string, RegistryAssetEntry>;
 	createdAt: string;
+	/** Optional dashboard-only title override. It does not rename the source document. */
+	displayTitle?: string;
+	/** Hidden entries remain published and registered but are omitted from dashboards. */
+	hidden?: boolean;
+}
+
+export interface DashboardEntryPatch {
+	displayTitle?: string | null;
+	hidden?: boolean;
 }
 
 export interface RegistryAssetEntry {
@@ -143,6 +152,18 @@ export class Config {
 			if (entry.slug === slugOrUrl || entry.url === slugOrUrl) return entry;
 		}
 		return null;
+	}
+
+	/** Update dashboard-only metadata without changing the published document identity. */
+	updateDashboardEntry(slug: string, patch: DashboardEntryPatch): boolean {
+		const entry = this.getEntryBySlug(slug);
+		if (!entry) return false;
+		if (patch.displayTitle !== undefined) {
+			if (patch.displayTitle === null) delete entry.displayTitle;
+			else entry.displayTitle = patch.displayTitle;
+		}
+		if (patch.hidden !== undefined) entry.hidden = patch.hidden;
+		return true;
 	}
 
 	/** Resolve a target that may be a file path, a slug, or a living URL. */

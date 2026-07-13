@@ -102,7 +102,12 @@ describe("cloud dashboard sync", () => {
 				endpoint: "https://dashboard.example.com/",
 				token: "sync-secret",
 				access,
-				registry: { "/private/tmp/report.html": registryEntry() },
+				registry: {
+					"/private/tmp/report.html": {
+						...registryEntry(),
+						displayTitle: "Renamed Field Notes",
+					},
+				},
 			},
 			{
 				fetch: fetchStub,
@@ -132,7 +137,7 @@ describe("cloud dashboard sync", () => {
 			throw new Error("manifest did not contain a tot");
 		}
 		expect(tots[0]).toMatchObject({
-			title: "Field Notes",
+			title: "Renamed Field Notes",
 			file: "report.html",
 			originalUrl: "https://tot.page/slug-123/report.html",
 			assetCount: 1,
@@ -204,6 +209,36 @@ describe("cloud dashboard sync", () => {
 				registry: {},
 			}),
 		).rejects.toThrow("must use HTTPS");
+	});
+
+	it("omits locally hidden Tots without downloading their content", async () => {
+		const sourceRequests: string[] = [];
+		const result = await syncCloudDashboard(
+			{
+				endpoint: "https://dashboard.example.com",
+				token: "secret",
+				access,
+				registry: {
+					"/tmp/hidden.html": { ...registryEntry(), hidden: true },
+				},
+			},
+			{
+				fetch: async (input) => {
+					const url = String(input);
+					if (url.includes("tot.page")) sourceRequests.push(url);
+					return Response.json({
+						tots: [],
+						count: 0,
+						generatedAt: new Date(0).toISOString(),
+					});
+				},
+				now: () => new Date("2026-07-13T03:00:00.000Z"),
+				log: () => {},
+			},
+		);
+
+		expect(result).toMatchObject({ count: 0, objectsUploaded: 0, manifestUpdated: false });
+		expect(sourceRequests).toEqual([]);
 	});
 });
 

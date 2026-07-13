@@ -84,7 +84,15 @@
 						<p class="section-number">01 / Published work</p>
 						<h2 id="catalog-heading">The archive</h2>
 					</div>
-					<p id="result-count" class="result-count">— pages</p>
+					<div class="catalog-meta">
+						<button
+							id="hidden-toggle"
+							class="hidden-toggle"
+							type="button"
+							hidden
+						></button>
+						<p id="result-count" class="result-count">— pages</p>
+					</div>
 				</div>
 				<div id="tot-grid" class="tot-grid" aria-live="polite"></div>
 			</section>
@@ -146,5 +154,34 @@
 				</p>
 			</div>
 		</template>
+
+		<dialog id="delete-dialog" class="delete-dialog">
+			<form method="dialog">
+				<p class="section-number">Dashboard housekeeping</p>
+				<h2>What should happen to this Tot?</h2>
+				<p id="delete-description" class="dialog-description"></p>
+				<div class="dialog-choice">
+					<div>
+						<strong>Hide from dashboard</strong>
+						<span
+							>Keeps the published Tot alive and recoverable from “Show hidden.”</span
+						>
+					</div>
+					<button id="hide-confirm" type="button">Hide</button>
+				</div>
+				<div class="dialog-choice danger-choice">
+					<div>
+						<strong>Delete published Tot</strong>
+						<span
+							>Removes the original page and its registry entry. This cannot be
+							undone.</span
+						>
+					</div>
+					<button id="delete-confirm" type="button">Delete permanently</button>
+				</div>
+				<button class="dialog-cancel" value="cancel">Cancel</button>
+			</form>
+		</dialog>
+		<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 	</body>
 </html>

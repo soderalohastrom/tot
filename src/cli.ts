@@ -240,6 +240,20 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
 			host: flagStr(args.flags, "host") ?? DEFAULT_DASHBOARD_HOST,
 			port,
 			open: args.flags["no-open"] !== true,
+			admin: {
+				update: async (slug, patch) => {
+					const current = Config.load();
+					const updated = current.updateDashboardEntry(slug, patch);
+					if (updated) current.save();
+					return updated;
+				},
+				remove: async (slug) => {
+					const current = Config.load();
+					if (!current.resolve(slug)) return false;
+					await removeCommand(slug, current, makeDeps(current));
+					return true;
+				},
+			},
 		});
 		console.log(`tot dashboard  ${instance.url}`);
 		return 0;

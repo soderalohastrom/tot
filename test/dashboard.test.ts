@@ -1,4 +1,4 @@
-import type { Server } from "node:http";
+import { request as httpRequest, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -48,6 +48,14 @@ describe("dashboard registry projection", () => {
 		expect(JSON.stringify(tots)).not.toContain("private-workspace-id");
 		expect(JSON.stringify(tots)).not.toContain("private-document-id");
 	});
+
+	it("projects custom display names and hidden state", () => {
+		const tots = dashboardTots({
+			"/tmp/report.html": entry({ displayTitle: "Quarterly Field Notes", hidden: true }),
+		});
+
+		expect(tots[0]).toMatchObject({ title: "Quarterly Field Notes", hidden: true });
+	});
 });
 
 describe("dashboard server", () => {
@@ -63,8 +71,9 @@ describe("dashboard server", () => {
 		const address = instance.server.address() as AddressInfo;
 		expect(instance.url).toBe(`http://127.0.0.1:${address.port}`);
 
-		const [page, api, missing] = await Promise.all([
+		const [page, app, api, missing] = await Promise.all([
 			fetch(`${instance.url}/`),
+			fetch(`${instance.url}/app.js`),
 			fetch(`${instance.url}/api/tots`),
 			fetch(`${instance.url}/does-not-exist`),
 		]);
@@ -74,6 +83,7 @@ describe("dashboard server", () => {
 			payload === null ||
 			!("count" in payload) ||
 			!("tots" in payload) ||
+			!("capabilities" in payload) ||
 			!Array.isArray(payload.tots)
 		) {
 			throw new Error("unexpected dashboard API response");
@@ -81,15 +91,125 @@ describe("dashboard server", () => {
 
 		expect(page.status).toBe(200);
 		expect(await page.text()).toContain("Tot <em>Index</em>");
+		expect(await app.text()).toContain('"x-tot-dashboard-token"');
 		expect(page.headers.get("content-security-policy")).toContain("frame-src https:");
 		expect(api.headers.get("cache-control")).toBe("no-store");
 		expect(payload.count).toBe(1);
 		expect(payload.tots[0]?.title).toBe("Report");
+		expect(payload.capabilities).toEqual({ manage: false });
 		expect(JSON.stringify(payload)).not.toContain("private-workspace-id");
 		expect(missing.status).toBe(404);
 	});
 
 	it("exposes a reusable request handler for other Node hosts", () => {
 		expect(createDashboardHandler(() => ({}))).toBeTypeOf("function");
+	});
+
+	it("allows token-protected rename, hide, restore, and permanent delete mutations", async () => {
+		const updates: Array<{ slug: string; patch: unknown }> = [];
+		const removals: string[] = [];
+		const instance = await startDashboard({
+			host: "127.0.0.1",
+			port: 0,
+			open: false,
+			registry: () => ({
+				"/tmp/report.html": entry(),
+				"/tmp/hidden.html": entry({ slug: "hidden", hidden: true }),
+			}),
+			admin: {
+				update: (slug, patch) => {
+					updates.push({ slug, patch });
+					return Promise.resolve(slug !== "missing");
+				},
+				remove: (slug) => {
+					removals.push(slug);
+					return Promise.resolve(slug !== "missing");
+				},
+			},
+		});
+		servers.push(instance.server);
+
+		const api = await fetch(`${instance.url}/api/tots`);
+		const payload = (await api.json()) as {
+			count: number;
+			hiddenCount: number;
+			capabilities: { manage: boolean; token: string };
+		};
+		expect(payload).toMatchObject({
+			count: 1,
+			hiddenCount: 1,
+			capabilities: { manage: true },
+		});
+		expect(payload.capabilities.token).toMatch(/^[a-f0-9]{64}$/);
+		const address = instance.server.address() as AddressInfo;
+		const reboundPayload = await new Promise<unknown>((resolve, reject) => {
+			const request = httpRequest(
+				{
+					hostname: "127.0.0.1",
+					port: address.port,
+					path: "/api/tots",
+					headers: { host: "attacker.example" },
+				},
+				(response) => {
+					let body = "";
+					response.setEncoding("utf8");
+					response.on("data", (chunk) => (body += chunk));
+					response.on("end", () => resolve(JSON.parse(body)));
+				},
+			);
+			request.on("error", reject);
+			request.end();
+		});
+		expect(reboundPayload).toMatchObject({ capabilities: { manage: false } });
+
+		const unauthorized = await fetch(`${instance.url}/api/tots/abc123`, {
+			method: "PATCH",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ title: "Nope" }),
+		});
+		expect(unauthorized.status).toBe(403);
+
+		const headers = {
+			"content-type": "application/json",
+			"x-tot-dashboard-token": payload.capabilities.token,
+		};
+		for (const patch of [{ title: "A clearer name" }, { hidden: true }, { hidden: false }]) {
+			// oxlint-disable-next-line no-await-in-loop -- preserve mutation ordering in this API test.
+			const response = await fetch(`${instance.url}/api/tots/abc123`, {
+				method: "PATCH",
+				headers,
+				body: JSON.stringify(patch),
+			});
+			expect(response.status).toBe(200);
+		}
+		expect(updates).toEqual([
+			{ slug: "abc123", patch: { displayTitle: "A clearer name" } },
+			{ slug: "abc123", patch: { hidden: true } },
+			{ slug: "abc123", patch: { hidden: false } },
+		]);
+
+		const removed = await fetch(`${instance.url}/api/tots/abc123`, {
+			method: "DELETE",
+			headers: { "x-tot-dashboard-token": payload.capabilities.token },
+		});
+		expect(removed.status).toBe(200);
+		expect(removals).toEqual(["abc123"]);
+	});
+
+	it("disables management entirely when explicitly bound beyond loopback", async () => {
+		const instance = await startDashboard({
+			host: "0.0.0.0",
+			port: 0,
+			open: false,
+			registry: () => ({ "/tmp/report.html": entry() }),
+			admin: {
+				update: () => Promise.resolve(true),
+				remove: () => Promise.resolve(true),
+			},
+		});
+		servers.push(instance.server);
+
+		const response = await fetch(`${instance.url}/api/tots`);
+		expect(await response.json()).toMatchObject({ capabilities: { manage: false } });
 	});
 });
