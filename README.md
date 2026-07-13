@@ -32,6 +32,7 @@ tot notes.md
 | `tot page.html`         | Publish HTML as the raw `.html` file, plus local support files it directly references. |
 | `tot update <link>`     | Push new content. The same link updates.                                               |
 | `tot list`              | Show what you have published.                                                          |
+| `tot dashboard`         | Browse and search your published pages in a local visual dashboard.                    |
 | `tot remove <link>`     | Remove the living page from its share link.                                            |
 | `tot login --key <key>` | Optional. Publish as an owned account instead of anonymous.                            |
 
@@ -50,6 +51,45 @@ Your link is live. Run `tot update` and the same `tot.page/...` link shows the n
 No accounts, no tokens. The link is the key. Treat them as you would excalidraw.
 
 > A page you publish is open. Anyone who has the link can view it, update it, or delete it. There is no private mode. Share the link with that in mind.
+
+## Local dashboard
+
+Run the dashboard from this repository or an installed package:
+
+```bash
+tot dashboard
+```
+
+It opens `http://127.0.0.1:4173` with card and list views, fuzzy search, live page previews, a reading panel, automatic registry refresh, and light/dark themes. The browser receives a sanitized projection of `~/.tot`; API keys and workspace/document IDs are never included.
+
+```bash
+tot dashboard --port 4400 --no-open
+tot dashboard --host 0.0.0.0 # explicit LAN binding
+```
+
+The default loopback binding is intentional. The current dashboard includes local source paths and has no authentication, so do not expose it directly to the internet. A public deployment should use a separate sanitized data source or export step while reusing the static frontend.
+
+### Cloud mirror and backup
+
+This fork includes a Cloudflare Worker + private R2 deployment that serves the same dashboard from a sanitized, content-addressed mirror. The cloud app is deny-by-default until Cloudflare Access is configured.
+
+```bash
+tot dashboard configure https://your-dashboard.example.com
+tot dashboard sync
+tot dashboard backup /path/to/archive
+tot dashboard restore /path/to/archive
+```
+
+The Worker sync credential and path-scoped Cloudflare Access service token are stored in macOS Keychain. They are never written to `~/.tot`, the dashboard manifest, or the repository. Repeated syncs deduplicate content and do not create new manifest snapshots unless something changes.
+
+Install the local server and five-minute reconciliation as user LaunchAgents:
+
+```bash
+tot dashboard install-agent
+tot dashboard uninstall-agent
+```
+
+See [docs/CLOUD_DASHBOARD.md](docs/CLOUD_DASHBOARD.md) for architecture, Cloudflare Access setup, restore behavior, and Hostinger backup instructions.
 
 ## Configuration
 

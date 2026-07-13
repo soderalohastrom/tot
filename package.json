@@ -21,7 +21,8 @@
 		"tot": "dist/cli.js"
 	},
 	"files": [
-		"dist"
+		"dist",
+		"dashboard"
 	],
 	"type": "module",
 	"exports": {
@@ -35,26 +36,33 @@
 	},
 	"scripts": {
 		"build": "tsc -p tsconfig.build.json",
+		"cloud:deploy": "wrangler deploy",
+		"cloud:dev": "wrangler dev",
+		"cloud:types": "wrangler types worker-configuration.d.ts --strict-vars false",
+		"dashboard": "pnpm build && node dist/cli.js dashboard",
 		"verify:contract": "node scripts/verify-domain-contract.mjs",
 		"lint": "oxlint",
 		"lint:fix": "oxlint --fix",
 		"format": "oxfmt --write .",
 		"format:check": "oxfmt --check .",
-		"typecheck": "tsc --noEmit -p tsconfig.json",
+		"typecheck": "wrangler types --check worker-configuration.d.ts --strict-vars false && tsc --noEmit -p tsconfig.json",
 		"test": "vitest run",
 		"prepack": "pnpm build && pnpm verify:contract",
 		"prepublishOnly": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm verify:contract"
 	},
 	"dependencies": {
 		"@resvg/resvg-js": "^2.6.2",
+		"jose": "^6.2.3",
 		"parse5": "^8.0.1"
 	},
 	"devDependencies": {
+		"@cloudflare/workers-types": "^5.20260712.1",
 		"@types/node": "^22.19.21",
 		"oxfmt": "^0.43.0",
 		"oxlint": "^1.58.0",
 		"typescript": "6.0.2",
-		"vitest": "^3.0.0"
+		"vitest": "^3.0.0",
+		"wrangler": "^4.110.0"
 	},
 	"engines": {
 		"node": ">=20.19"

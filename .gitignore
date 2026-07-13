@@ -7,3 +7,6 @@ dist/
 .idea/
 .vscode/
 *.tsbuildinfo
+.dev.vars*
+.env*
+.wrangler/

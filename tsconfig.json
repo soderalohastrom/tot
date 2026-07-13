@@ -15,6 +15,6 @@
 		"noUnusedParameters": true,
 		"isolatedModules": true
 	},
-	"include": ["src", "test"],
+	"include": ["src", "test", "worker", "worker-configuration.d.ts"],
 	"exclude": ["node_modules", "dist"]
 }

@@ -47,10 +47,11 @@ export function createHttpClient(cfg: HttpConfig, fetchImpl: typeof fetch = fetc
 			}
 			let res: Response;
 			try {
+				const requestBody = body instanceof Uint8Array ? Buffer.from(body) : body;
 				res = await fetchImpl(base + path, {
 					method,
 					headers: finalHeaders,
-					body,
+					body: requestBody,
 				});
 			} catch (cause) {
 				// A DNS/offline/timeout error from fetch is an opaque `TypeError: fetch

@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<meta name="color-scheme" content="light dark" />
+		<meta name="description" content="A local visual index of pages published with tot." />
+		<title>Tot Dashboard</title>
+		<link rel="stylesheet" href="/app.css" />
+		<script type="module" src="/app.js"></script>
+	</head>
+	<body>
+		<div class="grain" aria-hidden="true"></div>
+		<header class="masthead">
+			<div class="brand-lockup">
+				<div class="brand-mark" aria-hidden="true"><span>t</span></div>
+				<div>
+					<p class="eyebrow">Personal publishing archive</p>
+					<h1>Tot <em>Index</em></h1>
+				</div>
+			</div>
+			<div class="masthead-meta">
+				<span id="sync-state" class="sync-state"><i></i> Connecting</span>
+				<button
+					id="theme-toggle"
+					class="icon-button"
+					type="button"
+					aria-label="Switch color theme"
+					title="Switch color theme"
+				>
+					<svg class="sun-icon" viewBox="0 0 24 24" aria-hidden="true">
+						<circle cx="12" cy="12" r="3.5"></circle>
+						<path
+							d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.66 6.34l1.41-1.41"
+						></path>
+					</svg>
+					<svg class="moon-icon" viewBox="0 0 24 24" aria-hidden="true">
+						<path d="M20.5 15.2A8.5 8.5 0 0 1 8.8 3.5 8.5 8.5 0 1 0 20.5 15.2Z"></path>
+					</svg>
+				</button>
+			</div>
+		</header>
+
+		<section class="control-deck" aria-label="Dashboard controls">
+			<label class="search-wrap" for="search">
+				<svg viewBox="0 0 24 24" aria-hidden="true">
+					<circle cx="11" cy="11" r="6.5"></circle>
+					<path d="m16 16 4 4"></path>
+				</svg>
+				<input
+					id="search"
+					type="search"
+					autocomplete="off"
+					placeholder="Search titles, paths, slugs…"
+				/>
+				<kbd>⌘ K</kbd>
+			</label>
+			<div class="view-switch" role="group" aria-label="Display style">
+				<button type="button" data-view="cards" class="active" aria-pressed="true">
+					<svg viewBox="0 0 24 24" aria-hidden="true">
+						<rect x="3" y="3" width="7" height="7"></rect>
+						<rect x="14" y="3" width="7" height="7"></rect>
+						<rect x="3" y="14" width="7" height="7"></rect>
+						<rect x="14" y="14" width="7" height="7"></rect>
+					</svg>
+					Cards
+				</button>
+				<button type="button" data-view="list" aria-pressed="false">
+					<svg viewBox="0 0 24 24" aria-hidden="true">
+						<path d="M8 6h13M8 12h13M8 18h13"></path>
+						<circle cx="3" cy="6" r="1"></circle>
+						<circle cx="3" cy="12" r="1"></circle>
+						<circle cx="3" cy="18" r="1"></circle>
+					</svg>
+					List
+				</button>
+			</div>
+		</section>
+
+		<main class="workspace">
+			<section class="catalog" aria-labelledby="catalog-heading">
+				<div class="catalog-heading">
+					<div>
+						<p class="section-number">01 / Published work</p>
+						<h2 id="catalog-heading">The archive</h2>
+					</div>
+					<p id="result-count" class="result-count">— pages</p>
+				</div>
+				<div id="tot-grid" class="tot-grid" aria-live="polite"></div>
+			</section>
+
+			<aside id="reader" class="reader" aria-label="Tot reader">
+				<div class="reader-empty">
+					<p class="section-number">02 / Reader</p>
+					<div class="reader-glyph" aria-hidden="true">↗</div>
+					<h2>Select a tot<br />to read it here.</h2>
+					<p>
+						Choose any card or list row. The living page will open in this panel without
+						leaving your index.
+					</p>
+				</div>
+				<div class="reader-active" hidden>
+					<header>
+						<div>
+							<p class="section-number">02 / Reader</p>
+							<h2 id="reader-title"></h2>
+						</div>
+						<div class="reader-actions">
+							<a
+								id="reader-open"
+								class="icon-button"
+								target="_blank"
+								rel="noopener noreferrer"
+								aria-label="Open in new tab"
+								title="Open in new tab"
+								>↗</a
+							>
+							<button
+								id="reader-close"
+								class="icon-button"
+								type="button"
+								aria-label="Close reader"
+								title="Close reader"
+							>
+								×
+							</button>
+						</div>
+					</header>
+					<div class="reader-frame-shell">
+						<iframe
+							id="reader-frame"
+							title="Selected Tot"
+							sandbox="allow-scripts allow-forms allow-popups allow-modals allow-downloads"
+						></iframe>
+					</div>
+				</div>
+			</aside>
+		</main>
+
+		<template id="empty-template">
+			<div class="empty-state">
+				<span>∅</span>
+				<h3>No pages found</h3>
+				<p>
+					Try a broader search, or publish a new page with <code>tot &lt;file&gt;</code>.
+				</p>
+			</div>
+		</template>
+	</body>
+</html>

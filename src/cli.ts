@@ -11,7 +11,19 @@ import {
 	type CommandDeps,
 } from "./commands.js";
 import { Config } from "./config.js";
+import {
+	backupCloudDashboard,
+	cloudAccessCredentials,
+	cloudSyncToken,
+	loadCloudSyncSettings,
+	restoreCloudDashboard,
+	saveCloudSyncSettings,
+	saveCloudSyncToken,
+	syncCloudDashboard,
+} from "./cloud-sync.js";
+import { DEFAULT_DASHBOARD_HOST, DEFAULT_DASHBOARD_PORT, startDashboard } from "./dashboard.js";
 import { createHttpClient } from "./http.js";
+import { installDashboardLaunchAgents, uninstallDashboardLaunchAgents } from "./launch-agent.js";
 import type { OgMeta } from "./og.js";
 
 interface ParsedArgs {
@@ -50,6 +62,10 @@ const HELP = `tot — publish a page to tot.page
   tot update <file|url>   push new content to the same living URL
   tot remove <file|url>   delete a page (anyone with the link can; so can you)
   tot list                list pages you've published from this machine
+  tot dashboard           browse your published pages at localhost
+  tot dashboard sync      mirror local pages to the configured cloud dashboard
+  tot dashboard backup    download a restorable cloud archive
+  tot dashboard restore   restore the cloud mirror from an archive
   tot login --key <KEY>   save a pre-minted wsk_live_ key to ~/.tot (optional)
 
 flags
@@ -60,6 +76,11 @@ flags
   --image <url>        inject og:image/twitter:image (absolute https URL)
   --no-image           skip auto-generating a title/description banner when --title is set
   --url <url>          inject og:url (on 'update' this defaults to the page's living URL)
+  --host <host>        dashboard bind address (default ${DEFAULT_DASHBOARD_HOST})
+  --port <port>        dashboard port (default ${DEFAULT_DASHBOARD_PORT})
+  --no-open            start the dashboard without opening a browser
+  --cloud <url>        cloud dashboard URL for configure/sync
+  --quiet              suppress per-page cloud sync progress
   --help               show this help
 
 Passing --title without --image auto-generates a colored 1200×630 banner
@@ -123,6 +144,107 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
 		return 0;
 	}
 
+	if (cmd === "dashboard" || cmd === "dash") {
+		const dashboardCommand = args._[1];
+		if (dashboardCommand === "configure") {
+			const endpoint = flagStr(args.flags, "cloud") ?? args._[2];
+			const token = process.env.TOT_DASHBOARD_SYNC_TOKEN;
+			if (!endpoint) throw new Error("usage: tot dashboard configure <cloud-url>");
+			if (!token) {
+				throw new Error("set TOT_DASHBOARD_SYNC_TOKEN before configuring cloud sync");
+			}
+			if (process.platform === "darwin") saveCloudSyncToken(endpoint, token);
+			const settings = saveCloudSyncSettings(endpoint);
+			console.log(`cloud dashboard configured  ${settings.endpoint}`);
+			return 0;
+		}
+		if (dashboardCommand === "sync") {
+			const settings = loadCloudSyncSettings();
+			const endpoint = flagStr(args.flags, "cloud") ?? settings?.endpoint;
+			if (!endpoint) {
+				throw new Error("configure cloud sync first: tot dashboard configure <cloud-url>");
+			}
+			const token = cloudSyncToken(endpoint);
+			if (!token) throw new Error("cloud sync token was not found in Keychain");
+			const access = cloudAccessCredentials(endpoint);
+			if (!access) throw new Error("Cloudflare Access service credentials were not found");
+			const result = await syncCloudDashboard(
+				{ endpoint, token, access, registry: cfg.registry },
+				{
+					fetch,
+					now: () => new Date(),
+					log: args.flags.quiet === true ? () => {} : (message) => console.log(message),
+				},
+			);
+			console.log(
+				`cloud dashboard synced  ${result.count} tots, ${result.objectsUploaded} new objects, manifest ${result.manifestUpdated ? "updated" : "unchanged"}`,
+			);
+			return 0;
+		}
+		if (dashboardCommand === "backup") {
+			const settings = loadCloudSyncSettings();
+			const endpoint = flagStr(args.flags, "cloud") ?? settings?.endpoint;
+			if (!endpoint) throw new Error("cloud dashboard URL is required (--cloud <url>)");
+			const token = cloudSyncToken(endpoint);
+			if (!token) throw new Error("cloud sync token was not found");
+			const access = cloudAccessCredentials(endpoint);
+			if (!access) throw new Error("Cloudflare Access service credentials were not found");
+			const directory = args._[2] ?? path.join(process.cwd(), "tot-dashboard-backup");
+			const result = await backupCloudDashboard({ endpoint, token, access, directory });
+			console.log(
+				`cloud backup complete  ${result.count} tots, ${result.downloaded} downloaded  ${result.directory}`,
+			);
+			return 0;
+		}
+		if (dashboardCommand === "restore") {
+			const settings = loadCloudSyncSettings();
+			const endpoint = flagStr(args.flags, "cloud") ?? settings?.endpoint;
+			if (!endpoint) throw new Error("cloud dashboard URL is required (--cloud <url>)");
+			const token = cloudSyncToken(endpoint);
+			if (!token) throw new Error("cloud sync token was not found");
+			const access = cloudAccessCredentials(endpoint);
+			if (!access) throw new Error("Cloudflare Access service credentials were not found");
+			const directory = args._[2] ?? path.join(process.cwd(), "tot-dashboard-backup");
+			const result = await restoreCloudDashboard(
+				{ endpoint, token, access, directory },
+				{
+					fetch,
+					now: () => new Date(),
+					log: args.flags.quiet === true ? () => {} : (message) => console.log(message),
+				},
+			);
+			console.log(
+				`cloud restore complete  ${result.count} tots, ${result.uploaded} uploaded  ${result.directory}`,
+			);
+			return 0;
+		}
+		if (dashboardCommand === "install-agent") {
+			const definitions = installDashboardLaunchAgents();
+			console.log(`installed ${definitions.length} LaunchAgents (dashboard + 5-minute sync)`);
+			return 0;
+		}
+		if (dashboardCommand === "uninstall-agent") {
+			const definitions = uninstallDashboardLaunchAgents();
+			console.log(`removed ${definitions.length} Tot Dashboard LaunchAgents`);
+			return 0;
+		}
+		const portValue = flagStr(args.flags, "port");
+		if (portValue !== undefined && !/^\d+$/.test(portValue)) {
+			throw new Error(`invalid dashboard port: ${portValue}`);
+		}
+		const port = portValue === undefined ? DEFAULT_DASHBOARD_PORT : Number(portValue);
+		if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+			throw new Error(`invalid dashboard port: ${portValue}`);
+		}
+		const instance = await startDashboard({
+			host: flagStr(args.flags, "host") ?? DEFAULT_DASHBOARD_HOST,
+			port,
+			open: args.flags["no-open"] !== true,
+		});
+		console.log(`tot dashboard  ${instance.url}`);
+		return 0;
+	}
+
 	if (cmd === "update") {
 		const target = args._[1];
 		if (!target) {
@@ -174,11 +296,13 @@ export function isCliEntrypoint(
 // Only run when invoked as the CLI, not when imported (e.g. by tests).
 if (isCliEntrypoint(import.meta.url)) {
 	main().then(
-		(code) => process.exit(code),
+		(code) => {
+			process.exitCode = code;
+		},
 		(err: unknown) => {
 			const msg = err instanceof Error ? err.message : String(err);
 			console.error("error:", msg);
-			process.exit(1);
+			process.exitCode = 1;
 		},
 	);
 }

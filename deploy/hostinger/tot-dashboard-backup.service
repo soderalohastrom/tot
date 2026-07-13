@@ -1,0 +1,32 @@
+[Unit]
+Description=Archive the Tot Dashboard Cloudflare mirror
+Documentation=https://github.com/plannotator/tot
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=totbackup
+Group=totbackup
+WorkingDirectory=/srv/backups/tot-dashboard
+EnvironmentFile=/etc/tot-dashboard-backup.env
+ExecStart=/usr/bin/node /opt/tot-dashboard-backup/dist/cli.js dashboard backup /srv/backups/tot-dashboard --cloud ${TOT_DASHBOARD_CLOUD_URL}
+UMask=0077
+
+# The backup process only needs network access, its application files, and the
+# archive directory. Keep the rest of the VPS unavailable or read-only.
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+ReadWritePaths=/srv/backups/tot-dashboard
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native

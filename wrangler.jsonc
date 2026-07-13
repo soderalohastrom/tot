@@ -1,0 +1,38 @@
+{
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"name": "tot-dashboard",
+	"main": "./worker/index.ts",
+	"workers_dev": true,
+	"preview_urls": false,
+	"compatibility_date": "2026-07-12",
+	"compatibility_flags": ["nodejs_compat"],
+	"assets": {
+		"directory": "./dashboard",
+		"binding": "ASSETS",
+		"run_worker_first": true,
+	},
+	"r2_buckets": [
+		{
+			"binding": "TOTS_BUCKET",
+			"bucket_name": "tot-dashboard-archive",
+		},
+	],
+	"vars": {
+		"ACCESS_TEAM_DOMAIN": "https://scott-c93.cloudflareaccess.com",
+		"ACCESS_AUD": "6064e546a18462053ac95f5da5a6fc8f4861dc2e1ef521e93c179518a540dc91",
+	},
+	"secrets": {
+		"required": ["SYNC_SECRET"],
+	},
+	"observability": {
+		"enabled": true,
+		"logs": {
+			"enabled": true,
+			"head_sampling_rate": 1,
+		},
+		"traces": {
+			"enabled": true,
+			"head_sampling_rate": 0.05,
+		},
+	},
+}
