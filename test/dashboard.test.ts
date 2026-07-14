@@ -71,9 +71,10 @@ describe("dashboard server", () => {
 		const address = instance.server.address() as AddressInfo;
 		expect(instance.url).toBe(`http://127.0.0.1:${address.port}`);
 
-		const [page, app, api, missing] = await Promise.all([
+		const [page, app, layout, api, missing] = await Promise.all([
 			fetch(`${instance.url}/`),
 			fetch(`${instance.url}/app.js`),
+			fetch(`${instance.url}/reader-layout.js`),
 			fetch(`${instance.url}/api/tots`),
 			fetch(`${instance.url}/does-not-exist`),
 		]);
@@ -90,8 +91,15 @@ describe("dashboard server", () => {
 		}
 
 		expect(page.status).toBe(200);
-		expect(await page.text()).toContain("Tot <em>Index</em>");
-		expect(await app.text()).toContain('"x-tot-dashboard-token"');
+		const pageText = await page.text();
+		const appText = await app.text();
+		expect(pageText).toContain("Tot <em>Index</em>");
+		expect(pageText).toContain('id="reader-resizer"');
+		expect(pageText).toContain('role="separator"');
+		expect(appText).toContain('"x-tot-dashboard-token"');
+		expect(appText).toContain("tot-dashboard-reader-width");
+		expect(appText).toContain('addEventListener("pointerdown"');
+		expect(layout.status).toBe(200);
 		expect(page.headers.get("content-security-policy")).toContain("frame-src https:");
 		expect(api.headers.get("cache-control")).toBe("no-store");
 		expect(payload.count).toBe(1);

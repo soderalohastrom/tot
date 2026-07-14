@@ -261,14 +261,64 @@ kbd {
 }
 
 .workspace {
+	--reader-width: 34vw;
 	display: grid;
-	grid-template-columns: minmax(0, 1fr) minmax(340px, 34vw);
+	grid-template-columns: minmax(360px, 1fr) 11px minmax(300px, var(--reader-width));
 	min-height: calc(100vh - 210px);
 }
 .catalog {
 	min-width: 0;
 	padding: clamp(34px, 5vw, 76px) clamp(22px, 4vw, 68px) 80px;
+}
+.reader-resizer {
+	position: relative;
+	z-index: 4;
+	width: 11px;
+	min-height: 100%;
+	padding: 0;
+	border: 0;
 	border-right: 1px solid var(--line-strong);
+	border-left: 1px solid var(--line);
+	background: color-mix(in srgb, var(--paper-deep) 48%, transparent);
+	color: var(--muted);
+	cursor: col-resize;
+	touch-action: none;
+}
+.reader-resizer span,
+.reader-resizer span::before,
+.reader-resizer span::after {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	width: 2px;
+	height: 2px;
+	border-radius: 50%;
+	background: currentColor;
+	content: "";
+	transform: translate(-50%, -50%);
+}
+.reader-resizer span::before {
+	top: -5px;
+}
+.reader-resizer span::after {
+	top: 7px;
+}
+.reader-resizer:hover,
+.reader-resizer.is-dragging {
+	background: var(--accent-soft);
+	color: var(--accent);
+}
+.reader-resizer:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: -3px;
+}
+body.is-resizing-reader,
+body.is-resizing-reader * {
+	cursor: col-resize !important;
+	user-select: none !important;
+}
+body.is-resizing-reader iframe {
+	pointer-events: none;
 }
 .catalog-heading {
 	display: flex;
@@ -596,8 +646,11 @@ kbd {
 	gap: 12px;
 	height: 72px;
 }
+.reader-active header > div:first-child {
+	min-width: 0;
+}
 .reader-active h2 {
-	max-width: 22vw;
+	max-width: 100%;
 	overflow: hidden;
 	font-size: 23px;
 	text-overflow: ellipsis;
@@ -747,6 +800,9 @@ kbd {
 	}
 	.catalog {
 		border-right: 0;
+	}
+	.reader-resizer {
+		display: none;
 	}
 	.reader {
 		position: fixed;

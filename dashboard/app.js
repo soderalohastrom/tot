@@ -1,3 +1,11 @@
+import {
+	clampReaderWidth,
+	defaultReaderWidth,
+	maximumReaderWidth,
+	readerWidthFromKey,
+	readerWidthFromPointer,
+} from "./reader-layout.js";
+
 const state = {
 	tots: [],
 	query: "",
@@ -9,6 +17,8 @@ const state = {
 	showHidden: false,
 	editing: null,
 	pendingDelete: null,
+	readerWidth: null,
+	resizingReader: false,
 };
 
 const elements = {
@@ -18,6 +28,8 @@ const elements = {
 	hiddenToggle: document.querySelector("#hidden-toggle"),
 	sync: document.querySelector("#sync-state"),
 	reader: document.querySelector("#reader"),
+	workspace: document.querySelector(".workspace"),
+	readerResizer: document.querySelector("#reader-resizer"),
 	readerEmpty: document.querySelector(".reader-empty"),
 	readerActive: document.querySelector(".reader-active"),
 	readerTitle: document.querySelector("#reader-title"),
@@ -30,6 +42,8 @@ const elements = {
 	deleteConfirm: document.querySelector("#delete-confirm"),
 	toast: document.querySelector("#toast"),
 };
+
+const READER_WIDTH_KEY = "tot-dashboard-reader-width";
 
 const icons = {
 	edit: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 20 4.2-1 10.9-10.9a2.2 2.2 0 0 0-3.2-3.2L5 15.8 4 20Z"></path><path d="m14.5 6.5 3 3"></path></svg>',
@@ -163,6 +177,29 @@ function closeReader() {
 	elements.readerFrame.removeAttribute("src");
 	elements.readerActive.hidden = true;
 	elements.readerEmpty.hidden = false;
+}
+
+function setReaderWidth(width, { persist = false } = {}) {
+	const maximum = maximumReaderWidth(window.innerWidth);
+	const next = clampReaderWidth(width, window.innerWidth);
+	state.readerWidth = next;
+	elements.workspace.style.setProperty("--reader-width", `${next}px`);
+	elements.readerResizer.setAttribute("aria-valuemax", String(maximum));
+	elements.readerResizer.setAttribute("aria-valuenow", String(next));
+	elements.readerResizer.setAttribute("aria-valuetext", `${next} pixels wide`);
+	if (persist) localStorage.setItem(READER_WIDTH_KEY, String(next));
+}
+
+function resetReaderWidth() {
+	localStorage.removeItem(READER_WIDTH_KEY);
+	setReaderWidth(defaultReaderWidth(window.innerWidth));
+}
+
+function initializeReaderWidth() {
+	const saved = Number(localStorage.getItem(READER_WIDTH_KEY));
+	setReaderWidth(
+		Number.isFinite(saved) && saved > 0 ? saved : defaultReaderWidth(window.innerWidth),
+	);
 }
 
 async function refresh({ quiet = false } = {}) {
@@ -329,6 +366,58 @@ elements.deleteConfirm.addEventListener("click", async () => {
 elements.deleteDialog.addEventListener("close", () => {
 	state.pendingDelete = null;
 });
+elements.readerResizer.addEventListener("pointerdown", (event) => {
+	if (event.button !== 0 || state.resizingReader) return;
+	event.preventDefault();
+	state.resizingReader = true;
+	const startX = event.clientX;
+	const startWidth = elements.reader.getBoundingClientRect().width;
+	elements.readerResizer.setPointerCapture(event.pointerId);
+	elements.readerResizer.classList.add("is-dragging");
+	document.body.classList.add("is-resizing-reader");
+
+	const move = (moveEvent) => {
+		setReaderWidth(
+			readerWidthFromPointer(startWidth, startX, moveEvent.clientX, window.innerWidth),
+		);
+	};
+	const finish = (finishEvent) => {
+		if (!state.resizingReader) return;
+		state.resizingReader = false;
+		if (elements.readerResizer.hasPointerCapture(finishEvent.pointerId)) {
+			elements.readerResizer.releasePointerCapture(finishEvent.pointerId);
+		}
+		elements.readerResizer.classList.remove("is-dragging");
+		document.body.classList.remove("is-resizing-reader");
+		setReaderWidth(state.readerWidth, { persist: true });
+		elements.readerResizer.removeEventListener("pointermove", move);
+		elements.readerResizer.removeEventListener("pointerup", finish);
+		elements.readerResizer.removeEventListener("pointercancel", finish);
+	};
+	elements.readerResizer.addEventListener("pointermove", move);
+	elements.readerResizer.addEventListener("pointerup", finish);
+	elements.readerResizer.addEventListener("pointercancel", finish);
+});
+elements.readerResizer.addEventListener("keydown", (event) => {
+	if (event.key === "Enter" || event.key === " ") {
+		event.preventDefault();
+		resetReaderWidth();
+		return;
+	}
+	const width = readerWidthFromKey(
+		event.key,
+		state.readerWidth,
+		window.innerWidth,
+		event.shiftKey,
+	);
+	if (width === null) return;
+	event.preventDefault();
+	setReaderWidth(width, { persist: true });
+});
+elements.readerResizer.addEventListener("dblclick", resetReaderWidth);
+window.addEventListener("resize", () => {
+	if (state.readerWidth !== null) setReaderWidth(state.readerWidth);
+});
 document
 	.querySelectorAll("[data-view]")
 	.forEach((button) => button.addEventListener("click", () => setView(button.dataset.view)));
@@ -354,5 +443,6 @@ document.addEventListener("keydown", (event) => {
 	}
 });
 
+initializeReaderWidth();
 refresh();
 setInterval(() => refresh({ quiet: true }), 12_000);

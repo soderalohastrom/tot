@@ -47,6 +47,10 @@ const STATIC_ROUTES: Record<string, { file: string; contentType: string }> = {
 	"/index.html": { file: "index.html", contentType: "text/html; charset=utf-8" },
 	"/app.css": { file: "app.css", contentType: "text/css; charset=utf-8" },
 	"/app.js": { file: "app.js", contentType: "text/javascript; charset=utf-8" },
+	"/reader-layout.js": {
+		file: "reader-layout.js",
+		contentType: "text/javascript; charset=utf-8",
+	},
 };
 
 export function dashboardTitleFromFile(file: string, docPath: string): string {

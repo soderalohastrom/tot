@@ -60,7 +60,7 @@ Run the dashboard from this repository or an installed package:
 tot dashboard
 ```
 
-It opens `http://127.0.0.1:4173` with card and list views, fuzzy search, live page previews, a reading panel, automatic registry refresh, and light/dark themes. In card view, hover or focus a Tot to rename it, hide it from both dashboards, or permanently delete the published page. Hidden Tots remain registered and published; use **Show hidden** to restore them. The browser receives a sanitized projection of `~/.tot`; API keys and workspace/document IDs are never included.
+It opens `http://127.0.0.1:4173` with card and list views, fuzzy search, live page previews, a resizable reading panel, automatic registry refresh, and light/dark themes. Drag the divider beside the reader to resize it; the browser remembers the width. In card view, hover or focus a Tot to rename it, hide it from both dashboards, or permanently delete the published page. Hidden Tots remain registered and published; use **Show hidden** to restore them. The browser receives a sanitized projection of `~/.tot`; API keys and workspace/document IDs are never included.
 
 ```bash
 tot dashboard --port 4400 --no-open
