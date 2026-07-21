@@ -480,7 +480,10 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
 	// unknown slug simply renders the empty state.
 	const projectMatch = url.pathname.match(/^\/([a-z0-9][a-z0-9-]{0,63})$/);
 	if (projectMatch && !RESERVED_TOP_LEVEL.has(projectMatch[1]!)) {
-		const shell = new Request(new URL("/index.html", url), request);
+		// Fetch the root, not "/index.html": Cloudflare Assets canonicalizes
+		// /index.html → 307 /, which would bounce a browser at /<project> back to
+		// / and lose the project context. The root serves the same shell at 200.
+		const shell = new Request(new URL("/", url), request);
 		return withDashboardSecurity(await env.ASSETS.fetch(shell));
 	}
 	return withDashboardSecurity(await env.ASSETS.fetch(request));

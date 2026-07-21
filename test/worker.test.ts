@@ -266,7 +266,14 @@ describe("scoped client reading rooms", () => {
 		const env = environment(new MemoryR2(), {
 			access: false,
 			assets: (request) => {
-				seen.push(new URL(request.url).pathname);
+				const pathname = new URL(request.url).pathname;
+				seen.push(pathname);
+				// Real Cloudflare Assets canonicalizes /index.html → 307 /. The shell
+				// route must request a path Assets serves 200 (the root), or a browser
+				// at /<project> is redirected to / and loses the project context.
+				if (pathname === "/index.html") {
+					return new Response(null, { status: 307, headers: { location: "/" } });
+				}
 				return new Response("dashboard");
 			},
 		});
@@ -274,7 +281,7 @@ describe("scoped client reading rooms", () => {
 		const room = await handleRequest(new Request("https://dashboard.example.com/canlis"), env);
 		expect(room.status).toBe(200);
 		expect(await room.text()).toBe("dashboard");
-		expect(seen.at(-1)).toBe("/index.html");
+		expect(seen.at(-1)).toBe("/");
 		expect(room.headers.get("content-security-policy")).toContain("frame-src 'self'");
 
 		// Reserved asset basenames fall through to normal asset handling.
