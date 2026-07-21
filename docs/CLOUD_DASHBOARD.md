@@ -5,13 +5,26 @@ The cloud dashboard complements the localhost dashboard; it does not replace it.
 ## Architecture
 
 - **Worker Static Assets** serves the existing `dashboard/` interface.
-- **Worker API** validates Cloudflare Access JWTs before serving the dashboard, manifest, or mirrored pages.
+- **Worker API** optionally validates Cloudflare Access JWTs before serving the dashboard, manifest, or mirrored pages (see below).
 - **Private R2 bucket** (`tot-dashboard-archive`) stores immutable, content-addressed HTML and registered assets.
-- **Sync API** requires both a path-scoped Cloudflare Access service token and a separate 256-bit Worker secret stored in macOS Keychain.
+- **Sync API** requires a 256-bit Worker secret (`SYNC_SECRET`) stored in macOS Keychain, plus a path-scoped Cloudflare Access service token when Access is enabled.
 - **Local registry** (`~/.tot`) remains the source of which Tots belong in the current catalog.
 - **Manifest snapshots** are additive. Removing a Tot from the current manifest does not delete mirrored content.
 
-At the Worker layer, `/health` returns health and whether Access variables are configured. The hostname-wide Cloudflare Access application still protects that route at the edge. Without both Access variables, every browser route fails closed with `503`.
+### Browser access is opt-in
+
+In-Worker Cloudflare Access verification is gated on **both** `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` being set in `wrangler.jsonc`:
+
+- **Both set** → browser routes (`/`, `/api/tots`, `/mirror/*`) require a valid Access JWT; a missing/invalid token returns `401`.
+- **Either empty (current default)** → browser routes are served **without** an in-Worker check, i.e. the dashboard is publicly readable. Suitable for a personal archive on a domain you own. Front it with an edge Cloudflare Access application if you also want an edge gate.
+
+`/health` is always public and reports whether Access is configured (`authConfigured`). The `/api/sync/*` routes are **always** protected by the `SYNC_SECRET` bearer token, independent of the Access setting.
+
+> The dashboard is currently deployed at the custom domain **palapala.me** with Access left off, so it is publicly readable. Set both variables and redeploy to require sign-in.
+
+### Same-origin mirror URLs
+
+The manifest `url` field is a **relative** `/mirror/…` path, not an absolute origin. The dashboard iframes page previews and the reader under whatever host serves it, and the page CSP is `frame-src 'self'`. A relative path keeps every framed request same-origin — so the same manifest works on `workers.dev`, a custom domain, or a future scoped `/<project>` route without CSP changes. `originalUrl` stays absolute (the external "Open ↗" link to tot.page).
 
 ## Commands
 

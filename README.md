@@ -71,7 +71,7 @@ The default loopback binding is intentional. Dashboard mutations require an ephe
 
 ### Cloud mirror and backup
 
-This fork includes a Cloudflare Worker + private R2 deployment that serves the same dashboard from a sanitized, content-addressed mirror. The cloud app is deny-by-default until Cloudflare Access is configured.
+This fork includes a Cloudflare Worker + private R2 deployment that serves the same dashboard from a sanitized, content-addressed mirror — a searchable reading room for everything you publish, hosted on a domain you own and refreshed every five minutes.
 
 ```bash
 tot dashboard configure https://your-dashboard.example.com
@@ -82,6 +82,10 @@ tot dashboard restore /path/to/archive
 
 The Worker sync credential and path-scoped Cloudflare Access service token are stored in macOS Keychain. They are never written to `~/.tot`, the dashboard manifest, or the repository. Repeated syncs deduplicate content and do not create new manifest snapshots unless something changes.
 
+**Browser access is opt-in.** In-Worker Cloudflare Access verification turns on only when both `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` are set in `wrangler.jsonc`. Left unset, the dashboard is publicly readable — fine for a personal archive on your own domain; set both to require an Access sign-in. The `/api/sync/*` upload routes are always protected by the `SYNC_SECRET` bearer token regardless.
+
+Manifest `url`s are same-origin relative `/mirror/…` paths, so the dashboard's page previews and reader work under any host or path prefix (`workers.dev`, a custom domain, or a scoped route) without CSP changes.
+
 Install the local server and five-minute reconciliation as user LaunchAgents:
 
 ```bash
@@ -89,7 +93,7 @@ tot dashboard install-agent
 tot dashboard uninstall-agent
 ```
 
-See [docs/CLOUD_DASHBOARD.md](docs/CLOUD_DASHBOARD.md) for architecture, Cloudflare Access setup, restore behavior, and Hostinger backup instructions.
+See [docs/CLOUD_DASHBOARD.md](docs/CLOUD_DASHBOARD.md) for architecture, Cloudflare Access setup, restore behavior, and Hostinger backup instructions. Where this is headed next — per-client reading rooms at `/<project>` — is in [ROADMAP.md](ROADMAP.md), with the build plan in [docs/CLIENT_VIEWS_SPEC.md](docs/CLIENT_VIEWS_SPEC.md).
 
 ## Configuration
 

@@ -1,9 +1,60 @@
 # Handoff
 
-Notes for whichever LLM picks this repo up next. Written 2026-07-01 after a session
-that added Open Graph / Twitter Card support to the `tot` CLI.
+Notes for whichever LLM picks this repo up next. Running log, newest first.
+For durable architecture and invariants see [`CLAUDE.md`](CLAUDE.md); for direction
+see [`ROADMAP.md`](ROADMAP.md).
 
-## What changed this session
+---
+
+## 2026-07-20 — cloud dashboard: two production fixes + docs/roadmap snapshot
+
+The cloud dashboard (Worker + R2, now live at **palapala.me**) had two bugs that
+made it look healthy while silently failing. Both fixed and deployed.
+
+1. **R2 rejected every new upload (500).** `storeObject` in `worker/index.ts`
+   piped the request body through a `TransformStream` (to count bytes + hash),
+   which drops the stream's known length; `R2Bucket.put` refuses unknown-length
+   streams — "Provided readable stream must have a known length". So every *new*
+   object 500'd while dedup re-uploads (204) masked it. The 5-minute LaunchAgent
+   sync had failed ~1,300× over six days. **Fix:** rejoin the already-validated
+   content-length via `new FixedLengthStream(length)` before the R2 put.
+   `FixedLengthStream` is a workerd-only global, so `test/setup.ts` stubs a
+   pass-through for the vitest node env.
+
+2. **Card/reader previews were broken images.** The manifest `url` field was an
+   absolute `https://tot-dashboard.scott-c93.workers.dev/mirror/…` URL. On the
+   palapala.me custom domain that origin is cross-origin, and the dashboard CSP
+   is `frame-src 'self' https://tot.page` → every preview iframe blocked. **Fix:**
+   make the manifest `url` a **same-origin relative** `/mirror/…` path (in both
+   the sync builder and the restore builder, `src/cloud-sync.ts`). `originalUrl`
+   stays absolute (the tot.page "Open ↗" link).
+
+3. **Access made opt-in.** `worker/index.ts` no longer fails closed with `503`
+   when Access env vars are unset. Access verification runs only when *both*
+   `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` are set (`wrangler.jsonc`); they're
+   currently empty, so palapala.me is publicly readable. `/api/sync/*` is still
+   always `SYNC_SECRET`-gated. (This was an in-progress local change from a prior
+   session; reconciled and shipped.)
+
+**Docs written this session** (the "snapshot for the future" the owner asked for):
+`CLAUDE.md` (new, repo-level architecture + invariants), `ROADMAP.md` (new,
+direction), `docs/CLIENT_VIEWS_SPEC.md` (new, the next feature's build plan),
+plus accuracy updates to `README.md` and `docs/CLOUD_DASHBOARD.md`.
+
+**Next feature (speced, not started):** per-client reading rooms at `/<project>`
+via a `projects[]` tag on registry entries and a server-side `?project=` manifest
+filter. Full plan in `docs/CLIENT_VIEWS_SPEC.md`.
+
+**Verified:** `pnpm typecheck` + `pnpm test` (83/83) green; deployed via
+`pnpm cloud:deploy`; forced `tot dashboard sync` cleared the backlog (39 tots);
+`launchctl kickstart` of the sync job now exits 0; `palapala.me/api/tots` serves
+relative `/mirror/…` paths that resolve 200 same-origin.
+
+**Uncommitted:** all of the above is in the working tree, not yet committed.
+
+---
+
+## 2026-07-01 — Open Graph / Twitter Card support
 
 **Goal:** pages published with `tot` were invisible to Slack/Notion/Discord/iMessage
 link-unfurlers — no `<title>`, no OG tags, so shared links rendered as bare text.

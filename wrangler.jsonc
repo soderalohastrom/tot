@@ -18,8 +18,10 @@
 		},
 	],
 	"vars": {
-		"ACCESS_TEAM_DOMAIN": "https://scott-c93.cloudflareaccess.com",
-		"ACCESS_AUD": "6064e546a18462053ac95f5da5a6fc8f4861dc2e1ef521e93c179518a540dc91",
+		// Empty = Cloudflare Access JWT checks disabled in the worker (edge Access
+		// still fronts the host). Set both to re-enable in-worker verification.
+		"ACCESS_TEAM_DOMAIN": "",
+		"ACCESS_AUD": "",
 	},
 	"secrets": {
 		"required": ["SYNC_SECRET"],

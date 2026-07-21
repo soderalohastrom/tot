@@ -148,7 +148,7 @@ describe("cloud dashboard sync", () => {
 			assetContentTypes: { "preview.png": "image/png" },
 		});
 		expect(String(tots[0].url)).toMatch(
-			/^https:\/\/dashboard\.example\.com\/mirror\/slug-123\/[a-f0-9]{64}\/report\.html$/,
+			/^\/mirror\/slug-123\/[a-f0-9]{64}\/report\.html$/,
 		);
 	});
 
@@ -372,7 +372,7 @@ describe("cloud dashboard backup", () => {
 		expect(restoredManifest?.["generatedAt"]).toBe("2026-07-14T01:00:00.000Z");
 		const restoredTots = restoredManifest?.["tots"];
 		expect(Array.isArray(restoredTots) ? restoredTots[0] : null).toMatchObject({
-			url: `https://replacement.example.com/mirror/slug-123/${contentHash}/report.html`,
+			url: `/mirror/slug-123/${contentHash}/report.html`,
 		});
 	});
 

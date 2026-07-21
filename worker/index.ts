@@ -286,7 +286,13 @@ async function storeObject(request: Request, env: Env, url: URL): Promise<Respon
 	const stagingKey = `staging/${crypto.randomUUID()}`;
 	try {
 		try {
-			await env.TOTS_BUCKET.put(stagingKey, verifiedBody);
+			// R2 rejects streams of unknown length, and piping through the digest
+			// TransformStream drops it — rejoin the validated content-length here.
+			const fixed = new FixedLengthStream(length);
+			await Promise.all([
+				verifiedBody.pipeTo(fixed.writable),
+				env.TOTS_BUCKET.put(stagingKey, fixed.readable),
+			]);
 		} catch (error) {
 			if (error instanceof Error && error.message === "OBJECT_TOO_LARGE") {
 				return errorResponse(413, "object is too large");
@@ -393,13 +399,13 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
 		return errorResponse(404, "not found");
 	}
 
-	if (!(await authenticateAccess(request, env))) {
-		return errorResponse(
-			env.ACCESS_TEAM_DOMAIN && env.ACCESS_AUD ? 401 : 503,
-			env.ACCESS_TEAM_DOMAIN && env.ACCESS_AUD
-				? "Cloudflare Access authentication required"
-				: "Cloudflare Access is not configured",
-		);
+	if (url.pathname !== "/health" && !url.pathname.startsWith("/api/sync/")) {
+		// Only enforce Access auth when Access is actually configured (both env vars set)
+		if (env.ACCESS_TEAM_DOMAIN && env.ACCESS_AUD) {
+			if (!(await authenticateAccess(request, env))) {
+				return errorResponse(401, "Cloudflare Access authentication required");
+			}
+		}
 	}
 
 	if ((request.method === "GET" || request.method === "HEAD") && url.pathname === "/api/tots") {

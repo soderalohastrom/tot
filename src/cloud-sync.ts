@@ -286,7 +286,11 @@ async function syncOneTot(
 				dashboardTitleFromFile(file, docPath) ||
 				"Untitled Tot",
 			file: path.basename(file),
-			url: `${endpoint}${mirrorPath}`,
+			// Same-origin path, not `${endpoint}${mirrorPath}`: the dashboard iframes
+			// this under whatever host serves it (workers.dev or the palapala.me
+			// custom domain), and its CSP frame-src is 'self'. An absolute
+			// workers.dev URL is cross-origin from palapala.me and gets blocked.
+			url: mirrorPath,
 			originalUrl: entry.url,
 			slug: entry.slug,
 			kind: entry.kind,
@@ -766,7 +770,9 @@ export async function restoreCloudDashboard(
 		...manifest,
 		tots: manifest.tots.map((tot) => ({
 			...tot,
-			url: `${endpoint}/mirror/${encodeURIComponent(tot.slug)}/${tot.contentHash}/${encodedPath(tot.docPath)}`,
+			// Same-origin path (see the sync builder): the dashboard frames this and
+			// its CSP frame-src is 'self', so an absolute cross-origin URL is blocked.
+			url: `/mirror/${encodeURIComponent(tot.slug)}/${tot.contentHash}/${encodedPath(tot.docPath)}`,
 		})),
 		generatedAt: deps.now().toISOString(),
 	};
