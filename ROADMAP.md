@@ -12,6 +12,7 @@ room from **palapala.me** — a domain we own, updating itself every five minute
 It is currently a single, flat, public archive of everything synced.
 
 Recent groundwork that makes the next step cheap:
+
 - The manifest is a **sanitized projection** of `~/.tot` — adding a field is a
   one-line change with a clear privacy boundary.
 - Mirror URLs are **same-origin relative paths**, so the same UI works under any
@@ -22,7 +23,7 @@ Recent groundwork that makes the next step cheap:
 ## The next big thing: client reading rooms
 
 **Goal.** Append a route — `palapala.me/<project>` — that shows one client only
-*their* Tots, as a clean read-only page I can hand them. Today everything is one
+_their_ Tots, as a clean read-only page I can hand them. Today everything is one
 pile; I want curated, per-client views I can share with a link.
 
 **Why.** The dashboard being on my own domain, always current, is the thing I
@@ -70,8 +71,8 @@ is the summary.
   `palapala.me/canlis`), with the closed RESERVED-name guard in the spec so a
   slug can't shadow `/api`, `/mirror`, `/health`, or asset files. `/p/<project>`
   stays parked as the fallback if the guard ever becomes a maintenance burden.
-- **Privacy bar — decided 2026-07-21:** client rooms are *curation over
-  already-public pages*. Every Tot is already public-by-link on tot.page, so the
+- **Privacy bar — decided 2026-07-21:** client rooms are _curation over
+  already-public pages_. Every Tot is already public-by-link on tot.page, so the
   project slug is a filter, not a lock — capability URLs are enough, and the bare
   root `/` stays public too. If two clients ever must not see each other, the
   hedge is a thin landing at `/` with the full master list moved to a private

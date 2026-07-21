@@ -83,14 +83,20 @@ class MemoryR2 {
 	}
 }
 
-function environment(bucket: MemoryR2): Env {
+function environment(
+	bucket: MemoryR2,
+	options: { access?: boolean; assets?: (request: Request) => Response } = {},
+): Env {
 	return {
 		TOTS_BUCKET: bucket as unknown as R2Bucket,
 		ASSETS: {
-			fetch: () => Promise.resolve(new Response("dashboard")),
+			fetch: (input: unknown) =>
+				Promise.resolve(
+					options.assets ? options.assets(input as Request) : new Response("dashboard"),
+				),
 		} as unknown as Fetcher,
-		ACCESS_TEAM_DOMAIN: "https://example.cloudflareaccess.com",
-		ACCESS_AUD: "audience",
+		ACCESS_TEAM_DOMAIN: options.access === false ? "" : "https://example.cloudflareaccess.com",
+		ACCESS_AUD: options.access === false ? "" : "audience",
 		SYNC_SECRET: "sync-secret",
 	};
 }
@@ -164,5 +170,115 @@ describe("cloud dashboard Worker", () => {
 			env,
 		);
 		expect(response.status).toBe(422);
+	});
+});
+
+function manifestTot(slug: string, projects?: string[]) {
+	return {
+		id: slug,
+		title: slug,
+		file: `${slug}.html`,
+		url: `/mirror/${slug}/${"a".repeat(64)}/index.html`,
+		originalUrl: `https://tot.page/${slug}`,
+		slug,
+		kind: "html",
+		docPath: "index.html",
+		docContentType: "text/html",
+		bytes: 10,
+		createdAt: "2026-07-20T00:00:00.000Z",
+		contentHash: "a".repeat(64),
+		docSha256: "b".repeat(64),
+		assetCount: 0,
+		assetPaths: [],
+		assetHashes: {},
+		assetContentTypes: {},
+		syncedAt: "2026-07-20T00:00:00.000Z",
+		...(projects ? { projects } : {}),
+	};
+}
+
+describe("scoped client reading rooms", () => {
+	function seededBucket(): MemoryR2 {
+		const bucket = new MemoryR2();
+		const tots = [
+			manifestTot("alpha", ["canlis"]),
+			manifestTot("beta", ["canlis", "gohappy"]),
+			manifestTot("gamma"),
+		];
+		// No `hidden` case here by construction: hidden entries never reach the
+		// stored manifest — sync excludes them before upload.
+		const manifest = { tots, count: tots.length, generatedAt: "2026-07-20T00:00:00.000Z" };
+		bucket.objects.set("manifest/current.json", {
+			bytes: new TextEncoder().encode(JSON.stringify(manifest)),
+			contentType: "application/json; charset=utf-8",
+		});
+		return bucket;
+	}
+
+	it("filters the manifest server-side for ?project=", async () => {
+		const env = environment(seededBucket(), { access: false });
+		const response = await handleRequest(
+			new Request("https://dashboard.example.com/api/tots?project=canlis"),
+			env,
+		);
+		expect(response.status).toBe(200);
+		const body = (await response.json()) as {
+			tots: Array<{ slug: string }>;
+			count: number;
+			capabilities: { manage: boolean };
+		};
+		// gamma (untagged) must be absent from the raw payload — the filter is
+		// server-side, not client-side hiding.
+		expect(body.tots.map((tot) => tot.slug)).toEqual(["alpha", "beta"]);
+		expect(body.count).toBe(2);
+		expect(body.capabilities.manage).toBe(false);
+	});
+
+	it("returns an empty list for an unknown project and 400 for a bad slug", async () => {
+		const env = environment(seededBucket(), { access: false });
+		const unknown = await handleRequest(
+			new Request("https://dashboard.example.com/api/tots?project=nope"),
+			env,
+		);
+		expect(unknown.status).toBe(200);
+		expect(((await unknown.json()) as { tots: unknown[] }).tots).toEqual([]);
+		const bad = await handleRequest(
+			new Request("https://dashboard.example.com/api/tots?project=Not%20A%20Slug"),
+			env,
+		);
+		expect(bad.status).toBe(400);
+	});
+
+	it("leaves the unscoped manifest untouched", async () => {
+		const env = environment(seededBucket(), { access: false });
+		const response = await handleRequest(
+			new Request("https://dashboard.example.com/api/tots"),
+			env,
+		);
+		expect(response.status).toBe(200);
+		const body = (await response.json()) as { tots: unknown[]; count: number };
+		expect(body.tots).toHaveLength(3);
+		expect(body.count).toBe(3);
+	});
+
+	it("serves the dashboard shell at /<project> and leaves reserved names alone", async () => {
+		const seen: string[] = [];
+		const env = environment(new MemoryR2(), {
+			access: false,
+			assets: (request) => {
+				seen.push(new URL(request.url).pathname);
+				return new Response("dashboard");
+			},
+		});
+
+		const room = await handleRequest(new Request("https://dashboard.example.com/canlis"), env);
+		expect(room.status).toBe(200);
+		expect(await room.text()).toBe("dashboard");
+		expect(seen.at(-1)).toBe("/index.html");
+		expect(room.headers.get("content-security-policy")).toContain("frame-src 'self'");
+
+		// Reserved asset basenames fall through to normal asset handling.
+		await handleRequest(new Request("https://dashboard.example.com/app.js"), env);
+		expect(seen.at(-1)).toBe("/app.js");
 	});
 });

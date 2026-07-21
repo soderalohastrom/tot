@@ -106,6 +106,8 @@ describe("cloud dashboard sync", () => {
 					"/private/tmp/report.html": {
 						...registryEntry(),
 						displayTitle: "Renamed Field Notes",
+						// Deliberately unnormalized — the manifest builder must normalize.
+						projects: ["Canlis", "go-happy"],
 					},
 				},
 			},
@@ -146,10 +148,9 @@ describe("cloud dashboard sync", () => {
 			docContentType: "text/html",
 			assetHashes: { "preview.png": digest(new Uint8Array([1, 2, 3])) },
 			assetContentTypes: { "preview.png": "image/png" },
+			projects: ["canlis", "go-happy"],
 		});
-		expect(String(tots[0].url)).toMatch(
-			/^\/mirror\/slug-123\/[a-f0-9]{64}\/report\.html$/,
-		);
+		expect(String(tots[0].url)).toMatch(/^\/mirror\/slug-123\/[a-f0-9]{64}\/report\.html$/);
 	});
 
 	it("advances the content version when only an asset changes", async () => {

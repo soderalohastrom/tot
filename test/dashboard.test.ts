@@ -204,6 +204,50 @@ describe("dashboard server", () => {
 		expect(removals).toEqual(["abc123"]);
 	});
 
+	it("accepts project tag patches and rejects malformed ones", async () => {
+		const updates: Array<{ slug: string; patch: unknown }> = [];
+		const instance = await startDashboard({
+			host: "127.0.0.1",
+			port: 0,
+			open: false,
+			registry: () => ({ "/tmp/report.html": entry() }),
+			admin: {
+				update: (slug, patch) => {
+					updates.push({ slug, patch });
+					return Promise.resolve(true);
+				},
+				remove: () => Promise.resolve(true),
+			},
+		});
+		servers.push(instance.server);
+
+		const api = await fetch(`${instance.url}/api/tots`);
+		const payload = (await api.json()) as { capabilities: { token: string } };
+		const headers = {
+			"content-type": "application/json",
+			"x-tot-dashboard-token": payload.capabilities.token,
+		};
+		const patch = (body: unknown) =>
+			fetch(`${instance.url}/api/tots/abc123`, {
+				method: "PATCH",
+				headers,
+				body: JSON.stringify(body),
+			});
+
+		// Slug normalization happens in Config.updateDashboardEntry, not here —
+		// the handler forwards a validated shape.
+		expect((await patch({ projects: ["Canlis", "go-happy"] })).status).toBe(200);
+		expect((await patch({ projects: null })).status).toBe(200);
+		expect(updates).toEqual([
+			{ slug: "abc123", patch: { projects: ["Canlis", "go-happy"] } },
+			{ slug: "abc123", patch: { projects: null } },
+		]);
+
+		expect((await patch({ projects: "canlis" })).status).toBe(400);
+		expect((await patch({ projects: ["canlis", 42] })).status).toBe(400);
+		expect((await patch({ tags: ["canlis"] })).status).toBe(400);
+	});
+
 	it("disables management entirely when explicitly bound beyond loopback", async () => {
 		const instance = await startDashboard({
 			host: "0.0.0.0",

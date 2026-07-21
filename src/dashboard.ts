@@ -291,7 +291,10 @@ function dashboardPatch(value: unknown): DashboardEntryPatch {
 	}
 	const record = value as Record<string, unknown>;
 	const keys = Object.keys(record);
-	if (!keys.length || keys.some((key) => key !== "title" && key !== "hidden")) {
+	if (
+		!keys.length ||
+		keys.some((key) => key !== "title" && key !== "hidden" && key !== "projects")
+	) {
 		throw new Error("dashboard update contains unsupported fields");
 	}
 	const patch: DashboardEntryPatch = {};
@@ -306,6 +309,17 @@ function dashboardPatch(value: unknown): DashboardEntryPatch {
 	if ("hidden" in record) {
 		if (typeof record.hidden !== "boolean") throw new Error("hidden must be true or false");
 		patch.hidden = record.hidden;
+	}
+	if ("projects" in record) {
+		if (
+			record.projects !== null &&
+			(!Array.isArray(record.projects) ||
+				record.projects.some((slug) => typeof slug !== "string"))
+		) {
+			throw new Error("projects must be an array of slugs or null");
+		}
+		// Slug validation/normalization happens in Config.updateDashboardEntry.
+		patch.projects = record.projects as string[] | null;
 	}
 	return patch;
 }

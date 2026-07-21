@@ -152,7 +152,7 @@ choices exist (ROADMAP Phase 2/3):
   manifest are readable by anyone with the link (capability URL).
 - **Private root, public rooms:** protect `/` and unscoped `/api/tots` with
   Access, but exempt `/<project>` + `/api/tots?project=` from the gate so clients
-  read without a login. Implement by checking the project route/param *before*
+  read without a login. Implement by checking the project route/param _before_
   the Access gate. Only safe when capability URLs are an acceptable bar.
 - **Private rooms (Phase 3):** a per-project self-hosted Access application scoped
   to `/<project>` with an Allow policy for the client's email. No app-code auth;
@@ -186,6 +186,7 @@ renders it in the header. Absent metadata → fall back to the humanized slug.
 ## 8. Work items
 
 **Phase 1 (MVP)**
+
 1. `src/projects.ts` — slug regex + normalize/validate helper. Unit test.
 2. `RegistryEntry.projects` + `DashboardEntryPatch.projects` + patch handler
    normalization (`src/config.ts`, `src/dashboard.ts`). Test the patch path.
@@ -210,6 +211,7 @@ pnpm cloud:deploy
 ```
 
 Then, against the live host:
+
 - `GET /api/tots?project=canlis` returns only Tots tagged `canlis`, none `hidden`,
   and `capabilities.manage === false`.
 - `GET /api/tots?project=<unknown>` returns `{ tots: [] }` (200), not 500.

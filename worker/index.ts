@@ -6,6 +6,21 @@ const MAX_MANIFEST_BYTES = 2 * 1024 * 1024;
 const MAX_OBJECT_BYTES = 100 * 1024 * 1024;
 const HASH_PATTERN = /^[a-f0-9]{64}$/;
 const OBJECT_KEY_PATTERN = /^tots\/[A-Za-z0-9_-]+\/[a-f0-9]{64}\/[A-Za-z0-9._~!$&'()+,;=:@%/-]+$/;
+// Mirror of src/projects.ts (the Worker does not import from src/). Keep in sync.
+const PROJECT_SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
+// Closed set of real top-level routes and asset basenames that a bare
+// /<project> slug may never shadow. Dotted names can't match the slug pattern
+// anyway; they are listed so the full set lives in one place.
+const RESERVED_TOP_LEVEL = new Set([
+	"health",
+	"api",
+	"mirror",
+	"favicon.ico",
+	"index.html",
+	"app.js",
+	"app.css",
+	"reader-layout.js",
+]);
 
 interface PublicTot {
 	id: string;
@@ -26,6 +41,9 @@ interface PublicTot {
 	assetHashes: Record<string, string>;
 	assetContentTypes: Record<string, string>;
 	syncedAt: string;
+	/** Project slugs for scoped client reading rooms. Absent in manifests synced
+	 *  before this field existed — readers treat it as []. */
+	projects?: string[];
 }
 
 interface PublicManifest {
@@ -174,7 +192,12 @@ function isPublicTot(value: unknown): value is PublicTot {
 				tot.assetContentTypes![assetPath]!.length > 0,
 		) &&
 		typeof tot.syncedAt === "string" &&
-		isIsoTimestamp(tot.syncedAt)
+		isIsoTimestamp(tot.syncedAt) &&
+		(tot.projects === undefined ||
+			(Array.isArray(tot.projects) &&
+				tot.projects.every(
+					(slug) => typeof slug === "string" && PROJECT_SLUG_PATTERN.test(slug),
+				)))
 	);
 }
 
@@ -202,6 +225,36 @@ async function serveManifest(env: Env): Promise<Response> {
 			"content-type": "application/json; charset=utf-8",
 			"x-content-type-options": "nosniff",
 		},
+	});
+}
+
+/**
+ * Scoped reading-room manifest: only Tots tagged with the project, filtered
+ * server-side so a client view never receives the rest of the catalog. "Not
+ * hidden" needs no check here — hidden entries are excluded from the manifest
+ * at sync time. Always read-only.
+ */
+async function serveScopedManifest(env: Env, project: string): Promise<Response> {
+	if (!PROJECT_SLUG_PATTERN.test(project)) return errorResponse(400, "invalid project slug");
+	const empty = { tots: [], count: 0, capabilities: { manage: false } };
+	const object = await env.TOTS_BUCKET.get(MANIFEST_KEY);
+	if (!object) {
+		return jsonResponse({ ...empty, generatedAt: new Date(0).toISOString() });
+	}
+	let value: unknown;
+	try {
+		value = await new Response(object.body).json();
+	} catch {
+		return errorResponse(500, "stored manifest is unreadable");
+	}
+	if (!isPublicManifest(value)) return errorResponse(500, "stored manifest is invalid");
+	// ponytail: linear scan, add an index if the catalog reaches thousands.
+	const tots = value.tots.filter((tot) => (tot.projects ?? []).includes(project));
+	return jsonResponse({
+		tots,
+		count: tots.length,
+		generatedAt: value.generatedAt,
+		capabilities: { manage: false },
 	});
 }
 
@@ -409,7 +462,8 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
 	}
 
 	if ((request.method === "GET" || request.method === "HEAD") && url.pathname === "/api/tots") {
-		return serveManifest(env);
+		const project = url.searchParams.get("project");
+		return project === null ? serveManifest(env) : serveScopedManifest(env, project);
 	}
 	if (
 		(request.method === "GET" || request.method === "HEAD") &&
@@ -419,6 +473,15 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
 	}
 	if (request.method !== "GET" && request.method !== "HEAD") {
 		return errorResponse(405, "method not allowed");
+	}
+	// Scoped client reading room: any single-segment path that is not a reserved
+	// name is a candidate project slug. Serve the dashboard shell and let the SPA
+	// boot, read the slug from the URL, and fetch the scoped manifest — an
+	// unknown slug simply renders the empty state.
+	const projectMatch = url.pathname.match(/^\/([a-z0-9][a-z0-9-]{0,63})$/);
+	if (projectMatch && !RESERVED_TOP_LEVEL.has(projectMatch[1]!)) {
+		const shell = new Request(new URL("/index.html", url), request);
+		return withDashboardSecurity(await env.ASSETS.fetch(shell));
 	}
 	return withDashboardSecurity(await env.ASSETS.fetch(request));
 }

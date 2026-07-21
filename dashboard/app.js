@@ -19,7 +19,25 @@ const state = {
 	pendingDelete: null,
 	readerWidth: null,
 	resizingReader: false,
+	// Scoped client reading room: set when the app is served at /<project>.
+	project: projectFromPath(location.pathname),
 };
+
+// The Worker only serves this shell at reserved-name-free single-segment
+// paths, so any slug-shaped first segment is a project context. The local
+// dashboard serves only / and /index.html, so this stays null there.
+function projectFromPath(pathname) {
+	const segment = pathname.split("/")[1] ?? "";
+	if (segment === "" || segment === "index.html") return null;
+	return /^[a-z0-9][a-z0-9-]{0,63}$/.test(segment) ? segment : null;
+}
+
+function humanizeProjectSlug(slug) {
+	return slug
+		.split("-")
+		.map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+		.join(" ");
+}
 
 const elements = {
 	grid: document.querySelector("#tot-grid"),
@@ -208,10 +226,14 @@ async function refresh({ quiet = false } = {}) {
 		elements.sync.innerHTML = "<i></i> Connecting";
 	}
 	try {
-		const response = await fetch("/api/tots", { cache: "no-store" });
+		const manifestUrl = state.project
+			? `/api/tots?project=${encodeURIComponent(state.project)}`
+			: "/api/tots";
+		const response = await fetch(manifestUrl, { cache: "no-store" });
 		if (!response.ok) throw new Error(`HTTP ${response.status}`);
 		const data = await response.json();
-		const canManage = data.capabilities?.manage === true;
+		// Reading rooms are always read-only, whatever the endpoint claims.
+		const canManage = !state.project && data.capabilities?.manage === true;
 		const adminToken = canManage ? data.capabilities.token : null;
 		const signature =
 			data.tots
@@ -316,6 +338,17 @@ const savedTheme = localStorage.getItem("tot-dashboard-theme");
 if (savedTheme) setTheme(savedTheme);
 else setTheme(currentTheme());
 setView(state.view);
+
+// Scoped reading room: swap the masthead to the project name (Phase 1 derives
+// it from the slug; Phase 2 will use branding metadata).
+if (state.project) {
+	const name = humanizeProjectSlug(state.project);
+	document.title = `${name} · Tot`;
+	const eyebrow = document.querySelector(".eyebrow");
+	if (eyebrow) eyebrow.textContent = "Reading room";
+	const brandHeading = document.querySelector(".brand-lockup h1");
+	if (brandHeading) brandHeading.textContent = name;
+}
 
 elements.search.addEventListener("input", (event) => {
 	state.query = event.target.value;

@@ -6,6 +6,45 @@ see [`ROADMAP.md`](ROADMAP.md).
 
 ---
 
+## 2026-07-21 — client reading rooms: Phase 1 MVP implemented (not yet deployed)
+
+Built the full Phase 1 work list from `docs/CLIENT_VIEWS_SPEC.md` (Kimi session,
+picking up from a CC session that settled the open questions):
+
+- **Decisions recorded** in the spec §2 and ROADMAP: privacy bar = curation
+  (capability URLs are enough, root stays public, hedge = thin landing +
+  private-slug master list if two clients must ever not see each other);
+  URL shape = bare `/<project>` with the RESERVED guard.
+- `src/projects.ts` — slug pattern + `isProjectSlug` / `normalizeProjectSlug` /
+  `normalizeProjects`. The Worker mirrors the regex as a constant (keep in sync).
+- `RegistryEntry.projects` + `DashboardEntryPatch.projects`; normalization
+  happens in `Config.updateDashboardEntry` (null clears, array replaces).
+- CLI: `tot dashboard tag|untag <slug|url> <project>` and
+  `tot dashboard tags [<slug|url>]` — local-only, no network.
+- Manifest: `PublicTot.projects`, populated (normalized) by the sync builder;
+  `isPublicTot` accepts a missing field for pre-projects manifests.
+- Worker: `GET /api/tots?project=<slug>` filters server-side and returns
+  `capabilities.manage: false`; bad slug → 400; unknown slug → empty list.
+  `GET /<project>` serves the dashboard shell (`index.html`) for any
+  single-segment non-RESERVED path; unknown slugs render the SPA empty state.
+- `dashboard/app.js`: reads the project slug from `location.pathname`, fetches
+  the scoped manifest, forces `canManage=false`, and swaps the masthead to the
+  humanized slug. The local loopback dashboard is unaffected (serves only `/`).
+
+**Verified:** `pnpm format/lint/typecheck` clean; 97/97 tests (new:
+projects helper, config patch normalization, loopback patch validation, sync
+projection with projects, worker scoped filter + shell route + reserved
+fallthrough, CLI tag round-trip). Live smoke on the real registry:
+tag → `tot dashboard sync` (old worker accepted the new manifest shape;
+`projects` visible in `palapala.me/api/tots`) → untag → re-sync. Cloud and
+local state restored to zero tags afterwards.
+
+**NOT done:** `pnpm cloud:deploy` — the scoped filter and `/<project>` route
+only exist locally until the Worker is deployed. Phase 2 (tagging UI in the
+local dashboard, `projectMeta` branding, owner root behind Access) not started.
+
+---
+
 ## 2026-07-20 — cloud dashboard: two production fixes + docs/roadmap snapshot
 
 The cloud dashboard (Worker + R2, now live at **palapala.me**) had two bugs that
@@ -14,7 +53,7 @@ made it look healthy while silently failing. Both fixed and deployed.
 1. **R2 rejected every new upload (500).** `storeObject` in `worker/index.ts`
    piped the request body through a `TransformStream` (to count bytes + hash),
    which drops the stream's known length; `R2Bucket.put` refuses unknown-length
-   streams — "Provided readable stream must have a known length". So every *new*
+   streams — "Provided readable stream must have a known length". So every _new_
    object 500'd while dedup re-uploads (204) masked it. The 5-minute LaunchAgent
    sync had failed ~1,300× over six days. **Fix:** rejoin the already-validated
    content-length via `new FixedLengthStream(length)` before the R2 put.
@@ -30,7 +69,7 @@ made it look healthy while silently failing. Both fixed and deployed.
    stays absolute (the tot.page "Open ↗" link).
 
 3. **Access made opt-in.** `worker/index.ts` no longer fails closed with `503`
-   when Access env vars are unset. Access verification runs only when *both*
+   when Access env vars are unset. Access verification runs only when _both_
    `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` are set (`wrangler.jsonc`); they're
    currently empty, so palapala.me is publicly readable. `/api/sync/*` is still
    always `SYNC_SECRET`-gated. (This was an in-progress local change from a prior
@@ -79,7 +118,7 @@ link-unfurlers — no `<title>`, no OG tags, so shared links rendered as bare te
 3. **`src/commands.ts`** — `publishCommand`/`updateCommand` wire the above in.
    New `PublishOpts.og` (title/description/image/url) and `PublishOpts.noAutoImage`.
    Key wrinkle: a **fresh** `tot <file>` publish doesn't have a slug yet, but
-   `og:image` needs an absolute URL baked into the HTML *before* upload — so when
+   `og:image` needs an absolute URL baked into the HTML _before_ upload — so when
    auto-image applies, the workspace is created early (extra `POST /v1/workspaces`)
    just to learn the slug, then reused for the asset+document upload instead of
    creating it twice. `tot update` has no such problem — the slug is already known
@@ -106,7 +145,7 @@ link-unfurlers — no `<title>`, no OG tags, so shared links rendered as bare te
    wrote this file).
 
 7. **Companion skill updated** — `~/.claude/skills/tot-publish/SKILL.md` (v1.1.1 →
-   v1.2.0), *not* part of this repo. Documents the new flags, corrects an outdated
+   v1.2.0), _not_ part of this repo. Documents the new flags, corrects an outdated
    claim that `tot` "cannot fetch assets" / has no image support (it does — local
    images/CSS/JS upload automatically, which is exactly what the auto-banner uses),
    fixes an inaccurate `tot update <file> <url>` two-arg example (the CLI only ever

@@ -25,6 +25,7 @@ import { DEFAULT_DASHBOARD_HOST, DEFAULT_DASHBOARD_PORT, startDashboard } from "
 import { createHttpClient } from "./http.js";
 import { installDashboardLaunchAgents, uninstallDashboardLaunchAgents } from "./launch-agent.js";
 import type { OgMeta } from "./og.js";
+import { normalizeProjectSlug } from "./projects.js";
 
 interface ParsedArgs {
 	_: string[];
@@ -66,6 +67,9 @@ const HELP = `tot — publish a page to tot.page
   tot dashboard sync      mirror local pages to the configured cloud dashboard
   tot dashboard backup    download a restorable cloud archive
   tot dashboard restore   restore the cloud mirror from an archive
+  tot dashboard tag <slug|url> <project>    tag a page into a client reading room
+  tot dashboard untag <slug|url> <project>  remove a project tag from a page
+  tot dashboard tags [<slug|url>]           list project tags (all pages, or one)
   tot login --key <KEY>   save a pre-minted wsk_live_ key to ~/.tot (optional)
 
 flags
@@ -226,6 +230,50 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
 		if (dashboardCommand === "uninstall-agent") {
 			const definitions = uninstallDashboardLaunchAgents();
 			console.log(`removed ${definitions.length} Tot Dashboard LaunchAgents`);
+			return 0;
+		}
+		if (dashboardCommand === "tag" || dashboardCommand === "untag") {
+			const target = args._[2];
+			const project = args._[3];
+			if (!target || !project) {
+				throw new Error(`usage: tot dashboard ${dashboardCommand} <slug|url> <project>`);
+			}
+			const slug = normalizeProjectSlug(project);
+			if (!slug) throw new Error(`invalid project slug: ${project}`);
+			const resolved = cfg.resolve(target);
+			if (!resolved) throw new Error(`no published page matches: ${target}`);
+			const current = resolved.entry.projects ?? [];
+			const next =
+				dashboardCommand === "tag"
+					? [...current, slug]
+					: current.filter((existing) => existing !== slug);
+			// updateDashboardEntry normalizes the set; null clears the field entirely.
+			cfg.updateDashboardEntry(resolved.entry.slug, {
+				projects: next.length > 0 ? next : null,
+			});
+			cfg.save();
+			const tags = resolved.entry.projects ?? [];
+			console.log(
+				`${resolved.entry.slug}  ${dashboardCommand === "tag" ? "tagged" : "untagged"} ${slug}  (projects: ${tags.join(", ") || "none"})`,
+			);
+			return 0;
+		}
+		if (dashboardCommand === "tags") {
+			const target = args._[2];
+			const entries = target
+				? [cfg.resolve(target)?.entry ?? null]
+				: Object.values(cfg.registry).sort((a, b) =>
+						b.createdAt.localeCompare(a.createdAt),
+					);
+			if (entries.length === 1 && entries[0] === null) {
+				throw new Error(`no published page matches: ${target}`);
+			}
+			for (const entry of entries) {
+				if (!entry) continue;
+				console.log(
+					`${entry.slug}  ${(entry.projects ?? []).join(", ") || "(no projects)"}`,
+				);
+			}
 			return 0;
 		}
 		const portValue = flagStr(args.flags, "port");

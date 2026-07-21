@@ -87,6 +87,24 @@ describe("config", () => {
 		expect(cfg.getEntryByFile("notes.md")?.hidden).toBe(false);
 	});
 
+	it("normalizes project tags on write, clears on null, and rejects bad slugs", () => {
+		const cfg = Config.load();
+		cfg.addEntry("notes.md", entry());
+
+		expect(
+			cfg.updateDashboardEntry("slug1", { projects: [" Canlis ", "go-happy", "canlis"] }),
+		).toBe(true);
+		expect(cfg.getEntryByFile("notes.md")?.projects).toEqual(["canlis", "go-happy"]);
+
+		expect(cfg.updateDashboardEntry("slug1", { projects: null })).toBe(true);
+		expect(cfg.getEntryByFile("notes.md")?.projects).toBeUndefined();
+
+		expect(() => cfg.updateDashboardEntry("slug1", { projects: ["not a slug"] })).toThrow(
+			/invalid project slug/,
+		);
+		expect(cfg.getEntryByFile("notes.md")?.projects).toBeUndefined();
+	});
+
 	// Catches: registry lookup failing by slug or by full living URL — both are
 	// how `update`/`remove <target>` resolve when given a URL instead of a file.
 	it("resolves an entry by file path, by slug, and by full url", () => {

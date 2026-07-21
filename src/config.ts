@@ -2,6 +2,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+import { normalizeProjects } from "./projects.js";
+
 /** The /v1 API origin the CLI talks to. The API is a Workspaces surface; tot.page
  * remains the cookieless raw content origin. */
 export const DEFAULT_ENDPOINT = "https://workspaces.plannotator.ai";
@@ -22,11 +24,16 @@ export interface RegistryEntry {
 	displayTitle?: string;
 	/** Hidden entries remain published and registered but are omitted from dashboards. */
 	hidden?: boolean;
+	/** Project slugs this Tot appears under in scoped client reading rooms.
+	 *  Dashboard metadata only — does not affect the published document. */
+	projects?: string[];
 }
 
 export interface DashboardEntryPatch {
 	displayTitle?: string | null;
 	hidden?: boolean;
+	/** null clears the set; an array replaces it (normalized on write). */
+	projects?: string[] | null;
 }
 
 export interface RegistryAssetEntry {
@@ -163,6 +170,12 @@ export class Config {
 			else entry.displayTitle = patch.displayTitle;
 		}
 		if (patch.hidden !== undefined) entry.hidden = patch.hidden;
+		if (patch.projects !== undefined) {
+			// null clears; an array replaces the set. normalizeProjects throws on an
+			// invalid slug — let it propagate so callers reject the whole patch.
+			if (patch.projects === null) delete entry.projects;
+			else entry.projects = normalizeProjects(patch.projects);
+		}
 		return true;
 	}
 

@@ -6,6 +6,7 @@ import { spawnSync } from "node:child_process";
 
 import type { RegistryEntry } from "./config.js";
 import { dashboardTitleFromFile } from "./dashboard.js";
+import { isProjectSlug, normalizeProjects } from "./projects.js";
 
 const KEYCHAIN_SERVICE = "tot-dashboard-sync";
 const ACCESS_KEYCHAIN_SERVICE = "tot-dashboard-access";
@@ -72,6 +73,9 @@ interface PublicTot {
 	assetHashes: Record<string, string>;
 	assetContentTypes: Record<string, string>;
 	syncedAt: string;
+	/** Project slugs for scoped client reading rooms. Always set by the sync
+	 *  builder; manifests synced before this field existed are treated as []. */
+	projects: string[];
 }
 
 interface PublicManifest {
@@ -307,6 +311,7 @@ async function syncOneTot(
 				assets.map((asset) => [asset.path, asset.object.contentType]),
 			),
 			syncedAt,
+			projects: normalizeProjects(entry.projects ?? []),
 		},
 		objectsUploaded,
 	};
@@ -523,7 +528,12 @@ function isPublicTot(value: unknown): value is PublicTot {
 				tot.assetContentTypes![assetPath]!.length > 0,
 		) &&
 		typeof tot.syncedAt === "string" &&
-		isIsoTimestamp(tot.syncedAt)
+		isIsoTimestamp(tot.syncedAt) &&
+		// Optional for backward compatibility with pre-projects manifests;
+		// readers treat a missing field as [].
+		(tot.projects === undefined ||
+			(Array.isArray(tot.projects) &&
+				tot.projects.every((slug) => typeof slug === "string" && isProjectSlug(slug))))
 	);
 }
 
