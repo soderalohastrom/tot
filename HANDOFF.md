@@ -6,6 +6,42 @@ see [`ROADMAP.md`](ROADMAP.md).
 
 ---
 
+## 2026-07-23 — Phase 1 deployed + Phase 2 in-dashboard tagging UI
+
+Since the Phase 1 entry below (which said "not yet deployed"):
+
+- **Phase 1 deployed** to palapala.me. One deploy-only bug fixed: the
+  `/<project>` shell route fetched `/index.html`, which Cloudflare Assets
+  canonicalizes to a 307 → `/`, bouncing browsers out of the scoped view. Now
+  fetches the root (`worker/index.ts`); the worker test stubs the same
+  canonicalization so it can't regress. Commits `8f03b82`, `421706c` (pushed).
+- **Rooms populated:** 24 Tots tagged `mise`, 3 tagged `gohappy`, verified live
+  at palapala.me/mise and palapala.me/gohappy.
+
+**Phase 2 — tagging UI in the local dashboard (this entry):**
+
+- `DashboardTot` now carries `projects`, exposed by `dashboardTots()`
+  (`src/dashboard.ts`). The loopback PATCH endpoint already accepted a
+  `projects` patch (Phase 1), so no server-auth change.
+- `dashboard/app.js` + `index.html` + `app.css`: a tag button in the card
+  action cluster opens a `<dialog>` with the current rooms as removable chips
+  and an input (with a `<datalist>` of existing slugs). Add/remove **persist
+  immediately** via the existing `mutateTot` path — no separate save. Cards show
+  their room chips inline; fuzzy search now matches project slugs too.
+- **Privacy:** card chips and the tag button are gated on `state.canManage`, so
+  a client viewing `/mise` never sees a Tot's other room memberships. (Note: the
+  scoped `/api/tots?project=` response still includes each Tot's full `projects`
+  array — a network-inspector could see other slugs. Acceptable under the
+  curation-not-security posture; strip it in `serveScopedManifest` if that ever
+  matters.)
+- Verified live in the browser: add → chip appears in dialog + on card; remove →
+  gone; no leftover test tags. `pnpm typecheck` + 98/98 tests + oxlint clean.
+
+**NOT done:** Phase 2's other two items — per-project branding (`projectMeta`
+name/blurb/accent) and owner-root-behind-Access — not started.
+
+---
+
 ## 2026-07-21 — client reading rooms: Phase 1 MVP implemented (not yet deployed)
 
 Built the full Phase 1 work list from `docs/CLIENT_VIEWS_SPEC.md` (Kimi session,

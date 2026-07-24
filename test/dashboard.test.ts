@@ -56,6 +56,16 @@ describe("dashboard registry projection", () => {
 
 		expect(tots[0]).toMatchObject({ title: "Quarterly Field Notes", hidden: true });
 	});
+
+	it("exposes project tags (empty array when untagged) for the tagging UI", () => {
+		const tots = dashboardTots({
+			"/tmp/tagged.html": entry({ slug: "tag1", projects: ["mise", "gohappy"] }),
+			"/tmp/untagged.html": entry({ slug: "tag2", createdAt: "2026-07-11T18:00:00.000Z" }),
+		});
+
+		expect(tots.find((tot) => tot.slug === "tag1")?.projects).toEqual(["mise", "gohappy"]);
+		expect(tots.find((tot) => tot.slug === "tag2")?.projects).toEqual([]);
+	});
 });
 
 describe("dashboard server", () => {

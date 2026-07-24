@@ -765,6 +765,114 @@ body.is-resizing-reader iframe {
 	background: transparent;
 	color: var(--muted);
 }
+.tag-dialog {
+	width: min(460px, calc(100vw - 32px));
+	padding: 0;
+	border: 1px solid var(--line-strong);
+	background: var(--paper);
+	color: var(--ink);
+	box-shadow: 0 30px 90px rgba(0, 0, 0, 0.28);
+}
+.tag-dialog::backdrop {
+	background: rgba(18, 17, 15, 0.58);
+	backdrop-filter: blur(6px);
+}
+.tag-dialog-body {
+	padding: 30px;
+}
+.tag-dialog h2 {
+	margin: 0;
+	overflow: hidden;
+	font: 600 26px/1.05 var(--serif);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.tag-chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin: 4px 0 16px;
+}
+.tag-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	padding: 5px 6px 5px 11px;
+	border: 1px solid var(--line-strong);
+	border-radius: 999px;
+	background: var(--accent-soft);
+	color: var(--accent);
+	font: 600 11px var(--mono);
+}
+.tag-chip button {
+	display: grid;
+	place-items: center;
+	width: 17px;
+	height: 17px;
+	padding: 0;
+	border: 0;
+	border-radius: 50%;
+	background: transparent;
+	color: inherit;
+	font-size: 14px;
+	line-height: 1;
+	cursor: pointer;
+}
+.tag-chip button:hover,
+.tag-chip button:focus-visible {
+	background: var(--accent);
+	color: #fffaf0;
+}
+.tag-empty {
+	color: var(--muted);
+	font: 11px var(--sans);
+}
+#tag-form {
+	display: flex;
+	gap: 8px;
+}
+#tag-input {
+	flex: 1 1 auto;
+	min-width: 0;
+	padding: 9px 12px;
+	border: 1px solid var(--line-strong);
+	background: var(--surface);
+	color: var(--ink);
+	font: 13px var(--mono);
+}
+#tag-input:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 1px;
+}
+#tag-form button {
+	flex: 0 0 auto;
+	padding: 9px 15px;
+	border: 1px solid var(--line-strong);
+	background: var(--ink);
+	color: var(--paper);
+	cursor: pointer;
+	font: 600 10px var(--mono);
+}
+.tag-error {
+	margin: 10px 0 0;
+	color: var(--accent);
+	font: 11px/1.4 var(--sans);
+}
+.card-tags {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 5px;
+	margin: 0 0 9px;
+}
+.card-tag {
+	padding: 2px 8px;
+	border-radius: 999px;
+	background: var(--accent-soft);
+	color: var(--accent);
+	font: 600 9px var(--mono);
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+}
 .toast {
 	position: fixed;
 	right: 24px;

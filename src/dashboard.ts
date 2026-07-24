@@ -21,6 +21,7 @@ export interface DashboardTot {
 	bytes: number;
 	createdAt: string;
 	hidden: boolean;
+	projects: string[];
 }
 
 export interface DashboardAdmin {
@@ -84,6 +85,7 @@ export function dashboardTots(registry: Record<string, RegistryEntry>): Dashboar
 			bytes: entry.bytes,
 			createdAt: entry.createdAt,
 			hidden: entry.hidden === true,
+			projects: entry.projects ?? [],
 		}))
 		.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }

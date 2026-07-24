@@ -16,6 +16,7 @@ const state = {
 	adminToken: null,
 	showHidden: false,
 	editing: null,
+	tagging: null,
 	pendingDelete: null,
 	readerWidth: null,
 	resizingReader: false,
@@ -59,7 +60,17 @@ const elements = {
 	hideConfirm: document.querySelector("#hide-confirm"),
 	deleteConfirm: document.querySelector("#delete-confirm"),
 	toast: document.querySelector("#toast"),
+	tagDialog: document.querySelector("#tag-dialog"),
+	tagDialogTitle: document.querySelector("#tag-dialog-title"),
+	tagChips: document.querySelector("#tag-chips"),
+	tagForm: document.querySelector("#tag-form"),
+	tagInput: document.querySelector("#tag-input"),
+	tagSuggestions: document.querySelector("#tag-suggestions"),
+	tagError: document.querySelector("#tag-error"),
+	tagDone: document.querySelector("#tag-done"),
 };
+
+const PROJECT_SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 const READER_WIDTH_KEY = "tot-dashboard-reader-width";
 
@@ -68,6 +79,7 @@ const icons = {
 	hide: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"></path></svg>',
 	restore:
 		'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12s3.2-6 9-6 9 6 9 6-3.2 6-9 6-9-6-9-6Z"></path><circle cx="12" cy="12" r="2.5"></circle></svg>',
+	tag: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7l9 9-7 7-9-9V4Z"></path><circle cx="8.5" cy="8.5" r="1.3"></circle></svg>',
 };
 
 function escapeHtml(value) {
@@ -123,7 +135,7 @@ function visibleTots() {
 			tot,
 			score: fuzzyScore(
 				state.query,
-				`${tot.title} ${tot.file} ${tot.url} ${tot.slug} ${tot.kind}`,
+				`${tot.title} ${tot.file} ${tot.url} ${tot.slug} ${tot.kind} ${(tot.projects ?? []).join(" ")}`,
 			),
 		}))
 		.filter(({ score }) => score > 0)
@@ -138,10 +150,18 @@ function cardMarkup(tot, index) {
 	const actions =
 		state.canManage && state.view === "cards"
 			? `<div class="card-actions">
+				<button type="button" data-action="tag" data-id="${escapeHtml(tot.id)}" aria-label="Tag ${escapeHtml(tot.title)} by client or project" title="Tag by client / project">${icons.tag}</button>
 				<button type="button" data-action="edit" data-id="${escapeHtml(tot.id)}" aria-label="Rename ${escapeHtml(tot.title)}" title="Rename">${icons.edit}</button>
 				<button type="button" data-action="${tot.hidden ? "restore" : "hide"}" data-id="${escapeHtml(tot.id)}" aria-label="${tot.hidden ? "Restore" : "Hide or delete"} ${escapeHtml(tot.title)}" title="${tot.hidden ? "Restore to dashboard" : "Hide or delete"}">${tot.hidden ? icons.restore : icons.hide}</button>
 			</div>`
 			: "";
+	// Owner-only: never show cross-room membership inside a client reading room.
+	const projects = state.canManage ? (tot.projects ?? []) : [];
+	const tagRow = projects.length
+		? `<div class="card-tags">${projects
+				.map((slug) => `<span class="card-tag">${escapeHtml(slug)}</span>`)
+				.join("")}</div>`
+		: "";
 	return `<article class="tot-card${tot.hidden ? " is-hidden" : ""}" style="--i:${index}">
 		<div class="preview"><iframe src="${escapeHtml(tot.url)}" loading="lazy" sandbox="allow-scripts allow-forms" tabindex="-1" title="Preview of ${escapeHtml(tot.title)}"></iframe></div>
 		<button class="select-card" type="button" data-select="${escapeHtml(tot.id)}" aria-label="Read ${escapeHtml(tot.title)}"></button>
@@ -149,6 +169,7 @@ function cardMarkup(tot, index) {
 		<div class="card-body">
 			<div class="card-topline"><span class="kind">${escapeHtml(tot.kind)}${tot.hidden ? ' · <b class="hidden-label">hidden</b>' : ""}</span><time datetime="${escapeHtml(tot.createdAt)}">${formatDate(tot.createdAt)}</time></div>
 			${editing ? `<form class="rename-form" data-rename="${escapeHtml(tot.id)}"><input name="title" value="${escapeHtml(tot.title)}" maxlength="160" aria-label="New title for ${escapeHtml(tot.title)}" /><span>Enter to save · Esc to cancel</span></form>` : `<h3 title="${escapeHtml(tot.title)}">${escapeHtml(tot.title)}</h3>`}
+			${tagRow}
 			<p class="file-path" title="${escapeHtml(tot.file)}">${escapeHtml(tot.file)}</p>
 			<div class="card-footer"><span>${formatBytes(tot.bytes)}</span><a href="${escapeHtml(tot.originalUrl || tot.url)}" target="_blank" rel="noopener noreferrer">Open ↗</a></div>
 		</div>
@@ -239,7 +260,7 @@ async function refresh({ quiet = false } = {}) {
 			data.tots
 				.map(
 					(tot) =>
-						`${tot.id}:${tot.contentHash}:${tot.title}:${tot.url}:${tot.bytes}:${tot.createdAt}:${tot.hidden === true}`,
+						`${tot.id}:${tot.contentHash}:${tot.title}:${tot.url}:${tot.bytes}:${tot.createdAt}:${tot.hidden === true}:${(tot.projects ?? []).join(",")}`,
 				)
 				.join("|") + `|manage:${canManage}`;
 		if (signature !== state.signature) {
@@ -301,6 +322,111 @@ function beginRename(id) {
 	render();
 }
 
+function tagById(id) {
+	return state.tots.find((tot) => tot.id === id) ?? null;
+}
+
+// Union of every project slug in use, so the input can suggest existing rooms
+// instead of making you retype "mise"/"gohappy".
+function allProjectSlugs() {
+	const slugs = new Set();
+	for (const tot of state.tots) for (const slug of tot.projects ?? []) slugs.add(slug);
+	return [...slugs].sort();
+}
+
+function hideTagError() {
+	elements.tagError.hidden = true;
+	elements.tagError.textContent = "";
+}
+
+function showTagError(message) {
+	elements.tagError.textContent = message;
+	elements.tagError.hidden = false;
+}
+
+// Chips + suggestions always render from state.tots — the persisted source of
+// truth — so the dialog reflects exactly what was saved after each change.
+function renderTagDialog() {
+	const tot = tagById(state.tagging);
+	if (!tot) return;
+	const projects = tot.projects ?? [];
+	elements.tagChips.innerHTML = projects.length
+		? projects
+				.map(
+					(slug) =>
+						`<span class="tag-chip">${escapeHtml(slug)}<button type="button" data-remove-tag="${escapeHtml(slug)}" aria-label="Remove ${escapeHtml(slug)}" title="Remove">×</button></span>`,
+				)
+				.join("")
+		: '<span class="tag-empty">No rooms yet — add one below.</span>';
+	const applied = new Set(projects);
+	elements.tagSuggestions.innerHTML = allProjectSlugs()
+		.filter((slug) => !applied.has(slug))
+		.map((slug) => `<option value="${escapeHtml(slug)}"></option>`)
+		.join("");
+}
+
+function openTagDialog(id) {
+	const tot = tagById(id);
+	if (!tot) return;
+	state.tagging = id;
+	elements.tagDialogTitle.textContent = tot.title;
+	elements.tagInput.value = "";
+	hideTagError();
+	renderTagDialog();
+	elements.tagDialog.showModal();
+	elements.tagInput.focus();
+}
+
+// Persist immediately on each add/remove: the reading room is live, so there is
+// no separate "save" step to forget. Re-render from the refreshed state.
+async function commitTags(id, projects) {
+	if (!state.canManage || !state.adminToken) return;
+	try {
+		const response = await fetch(`/api/tots/${encodeURIComponent(id)}`, {
+			method: "PATCH",
+			headers: {
+				"x-tot-dashboard-token": state.adminToken,
+				"content-type": "application/json",
+			},
+			body: JSON.stringify({ projects: projects.length ? projects : null }),
+		});
+		const result = await response.json().catch(() => ({}));
+		if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
+		state.signature = "";
+		await refresh({ quiet: true });
+		if (state.tagging === id) renderTagDialog();
+	} catch (error) {
+		showTagError(error.message || "Could not update rooms");
+	}
+}
+
+function addTagFromInput() {
+	const tot = tagById(state.tagging);
+	if (!tot) return;
+	const slug = elements.tagInput.value.trim().toLowerCase();
+	if (!slug) return;
+	if (!PROJECT_SLUG_PATTERN.test(slug)) {
+		showTagError("Use lowercase letters, numbers and hyphens (e.g. gohappy).");
+		return;
+	}
+	elements.tagInput.value = "";
+	if ((tot.projects ?? []).includes(slug)) {
+		hideTagError();
+		return;
+	}
+	hideTagError();
+	commitTags(tot.id, [...(tot.projects ?? []), slug]);
+}
+
+function removeTag(slug) {
+	const tot = tagById(state.tagging);
+	if (!tot) return;
+	commitTags(
+		tot.id,
+		(tot.projects ?? []).filter((existing) => existing !== slug),
+	);
+}
+
 function openDeleteDialog(id) {
 	const tot = state.tots.find((candidate) => candidate.id === id);
 	if (!tot) return;
@@ -358,6 +484,7 @@ elements.grid.addEventListener("click", (event) => {
 	const action = event.target.closest("[data-action]");
 	if (action) {
 		const id = action.dataset.id;
+		if (action.dataset.action === "tag") openTagDialog(id);
 		if (action.dataset.action === "edit") beginRename(id);
 		if (action.dataset.action === "hide") openDeleteDialog(id);
 		if (action.dataset.action === "restore") {
@@ -377,6 +504,20 @@ elements.grid.addEventListener("submit", (event) => {
 		body: { title: typeof title === "string" ? title : "" },
 		success: "Display name saved",
 	});
+});
+elements.tagForm.addEventListener("submit", (event) => {
+	event.preventDefault();
+	addTagFromInput();
+	elements.tagInput.focus();
+});
+elements.tagChips.addEventListener("click", (event) => {
+	const remove = event.target.closest("[data-remove-tag]");
+	if (remove) removeTag(remove.dataset.removeTag);
+});
+elements.tagDone.addEventListener("click", () => elements.tagDialog.close());
+elements.tagDialog.addEventListener("close", () => {
+	state.tagging = null;
+	hideTagError();
 });
 elements.hiddenToggle.addEventListener("click", () => {
 	state.showHidden = !state.showHidden;
@@ -464,6 +605,9 @@ document.addEventListener("keydown", (event) => {
 		elements.search.focus();
 	}
 	if (event.key === "Escape") {
+		// The tag dialog is a native modal; let it handle Escape itself so we
+		// don't also clear the reader or the search box behind it.
+		if (elements.tagDialog.open) return;
 		if (state.editing) {
 			state.editing = null;
 			render();

@@ -195,6 +195,35 @@
 				<button class="dialog-cancel" value="cancel">Cancel</button>
 			</form>
 		</dialog>
+
+		<dialog id="tag-dialog" class="tag-dialog">
+			<div class="tag-dialog-body">
+				<p class="section-number">Client / project rooms</p>
+				<h2 id="tag-dialog-title">Tag this page</h2>
+				<p class="dialog-description">
+					Add a project slug like <code>mise</code> or <code>gohappy</code>. The page
+					then appears at <code>/&lt;slug&gt;</code> alongside the others in that room.
+					Tagging only organizes your dashboard — it never changes the published page.
+				</p>
+				<div id="tag-chips" class="tag-chips" aria-live="polite"></div>
+				<form id="tag-form" autocomplete="off">
+					<input
+						id="tag-input"
+						name="tag"
+						list="tag-suggestions"
+						spellcheck="false"
+						autocapitalize="off"
+						placeholder="mise"
+						aria-label="New project slug"
+						maxlength="64"
+					/>
+					<datalist id="tag-suggestions"></datalist>
+					<button type="submit">Add</button>
+				</form>
+				<p id="tag-error" class="tag-error" role="alert" hidden></p>
+				<button class="dialog-cancel" type="button" id="tag-done">Done</button>
+			</div>
+		</dialog>
 		<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 	</body>
 </html>
