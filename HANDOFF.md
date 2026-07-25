@@ -6,6 +6,55 @@ see [`ROADMAP.md`](ROADMAP.md).
 
 ---
 
+## 2026-07-25 — Public root closed behind a secret owner slug
+
+The dashboard was already deployed and current; this session changed the access
+posture, not the feature set.
+
+**The problem.** `palapala.me/` listed the entire mirror, and `GET /api/tots`
+with no `?project=` returned the full catalog to a bare `curl`. Fine while every
+Tot was a client page; not fine once personal pages share the bucket. Obscuring
+the home *page* would have been theater — the API was the exposure.
+
+**What shipped.**
+
+- **Root is a dead end.** `dashboard/index.html` is now a landing page (brand
+  mark, one line, no catalog, no links into the rooms).
+- **Unscoped manifest 404s.** Every edge read is scoped to a room.
+- **The owner's catalog is a room.** `OWNER_SLUG` is a Worker **secret** holding
+  a project slug that `serveScopedManifest` matches against every Tot instead of
+  filtering. Currently **`scotty`** → `palapala.me/scotty`. Rotate with
+  `printf '%s' 'x' | npx wrangler secret put OWNER_SLUG`; no deploy needed, and
+  the value lives only in the secret, never in the repo. Scotty chose a
+  memorable slug over the generated random one, understanding it is guessable —
+  the content is public-by-link on tot.page regardless, so this closes
+  enumeration, not secrecy.
+- **The SPA shell moved to `dashboard/room.html`** so the root could become the
+  landing page. `src/dashboard.ts` serves it at `/` locally, so 127.0.0.1:4173
+  is unchanged (`manage: true`, tagging UI intact).
+
+**Trap worth remembering.** Cloudflare Assets' default `html_handling`
+(`auto-trailing-slash`) 307s `/index.html` → `/` **and** `/room.html` → `/room`.
+The first broke the `/<project>` route back in 421706c; the second turned the
+shell fetch into a redirect loop mid-deploy (`/mise` → `/room` → `/mise` …).
+Assets is now `html_handling: "none"` and the Worker names the file for every
+route via `serveAsset()`. The test mocks 404 any non-literal path so a route that
+leans on canonicalization fails loudly instead of in production.
+
+**Client-visible sync latency** (the question that prompted the wrap-up): tagging
+writes `~/.tot` instantly, but the client sees it only after the LaunchAgent
+syncs — `StartInterval` 300s, so **0–5 min, ~2.5 min average, plus ~13s for the
+run itself**. `launchd` skips intervals while the Mac sleeps and fires on wake.
+To publish immediately, run `tot dashboard sync` by hand. The scoped API is
+`cache-control: no-store`, so a plain browser refresh always gets fresh data —
+no cache-busting needed on the client's end.
+
+**Deliberately not done.** Cloud-side tagging (would need Access + a write path +
+edge storage + reconciliation with `~/.tot`); per-project branding; a password
+gate (offered, declined in favor of the secret slug).
+
+---
+
 ## 2026-07-23 — Phase 1 deployed + Phase 2 in-dashboard tagging UI
 
 Since the Phase 1 entry below (which said "not yet deployed"):

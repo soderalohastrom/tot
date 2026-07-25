@@ -4,12 +4,17 @@ Where the tot dashboard is going. This is the direction doc — read it before
 proposing large changes. Detailed engineering specs live in `docs/`; this file
 is the "why" and the shape.
 
-## Where we are (2026-07-20)
+## Where we are (2026-07-25)
 
 The cloud dashboard works end to end. Pages published with `tot` are mirrored to
 a private R2 bucket by a Cloudflare Worker and served as a searchable reading
 room from **palapala.me** — a domain we own, updating itself every five minutes.
-It is currently a single, flat, public archive of everything synced.
+
+Client reading rooms shipped: the catalog is no longer one flat public pile.
+`palapala.me/<project>` is a scoped, read-only room (`/mise`, `/gohappy`), the
+public root is a dead-end landing page, and the full catalog lives behind a
+secret slug (`OWNER_SLUG`) that behaves like any other room. Tagging happens in
+the local dashboard, which is the only place management chrome renders.
 
 Recent groundwork that makes the next step cheap:
 

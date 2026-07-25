@@ -11,16 +11,38 @@ The cloud dashboard complements the localhost dashboard; it does not replace it.
 - **Local registry** (`~/.tot`) remains the source of which Tots belong in the current catalog.
 - **Manifest snapshots** are additive. Removing a Tot from the current manifest does not delete mirrored content.
 
-### Browser access is opt-in
+### Reading rooms, and what the public root shows
+
+Everything readable on the edge is scoped to a room. There is no unscoped catalog:
+
+| Route | Serves |
+|---|---|
+| `/` | `dashboard/index.html` — a landing page. No catalog, no links into the rooms. |
+| `/<project>` | `dashboard/room.html` (the SPA shell) for any non-reserved single-segment slug. The UI reads the slug and fetches its scoped manifest; an unknown slug renders the empty state. |
+| `/api/tots?project=<slug>` | Only Tots tagged with that slug, filtered **server-side**. |
+| `/api/tots` (no `project`) | `404`. Restoring an unscoped listing re-exposes the whole mirror to a bare `curl`. |
+| `/mirror/*` | Mirrored content by content-addressed path. Unlisted, but reachable if you already hold the path. |
+
+The owner's own catalog is `OWNER_SLUG` — a **secret** holding an unguessable project slug that `serveScopedManifest` matches against *every* Tot instead of filtering by tag. It is a normal room in every other respect, including `capabilities.manage: false`. Unset means no owner room exists; an empty slug never matches. Rotate without a deploy:
+
+```bash
+printf '%s' 'new-slug' | npx wrangler secret put OWNER_SLUG   # must match [a-z0-9][a-z0-9-]*
+```
+
+This is **curation, not secrecy**. Tots stay public-by-link on tot.page, and mirror paths stay fetchable to anyone holding one. The gate closes *enumeration* — nobody browses or curls their way to the catalog.
+
+> **Assets serve literal paths.** `html_handling` is `"none"` and the Worker names the file for each route. The default mode 307s `/index.html` → `/` and `/room.html` → `/room`; the first broke the `/<project>` route once, and the second turned the shell fetch into a redirect loop. Don't add a route that fetches a bare path.
+
+### Cloudflare Access is opt-in (and currently off)
 
 In-Worker Cloudflare Access verification is gated on **both** `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` being set in `wrangler.jsonc`:
 
-- **Both set** → browser routes (`/`, `/api/tots`, `/mirror/*`) require a valid Access JWT; a missing/invalid token returns `401`.
-- **Either empty (current default)** → browser routes are served **without** an in-Worker check, i.e. the dashboard is publicly readable. Suitable for a personal archive on a domain you own. Front it with an edge Cloudflare Access application if you also want an edge gate.
+- **Both set** → *all* browser routes require a valid Access JWT; a missing/invalid token returns `401`.
+- **Either empty (current default)** → no in-Worker check. Room scoping above is what limits reads.
+
+Note the interaction: Access is all-or-nothing across browser routes, so enabling it would put a sign-in in front of the client rooms too. That is why the rooms are gated by slug scoping instead.
 
 `/health` is always public and reports whether Access is configured (`authConfigured`). The `/api/sync/*` routes are **always** protected by the `SYNC_SECRET` bearer token, independent of the Access setting.
-
-> The dashboard is currently deployed at the custom domain **palapala.me** with Access left off, so it is publicly readable. Set both variables and redeploy to require sign-in.
 
 ### Same-origin mirror URLs
 
