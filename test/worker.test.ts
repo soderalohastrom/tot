@@ -85,7 +85,11 @@ class MemoryR2 {
 
 function environment(
 	bucket: MemoryR2,
-	options: { access?: boolean; assets?: (request: Request) => Response } = {},
+	options: {
+		access?: boolean;
+		assets?: (request: Request) => Response;
+		ownerSlug?: string;
+	} = {},
 ): Env {
 	return {
 		TOTS_BUCKET: bucket as unknown as R2Bucket,
@@ -98,6 +102,7 @@ function environment(
 		ACCESS_TEAM_DOMAIN: options.access === false ? "" : "https://example.cloudflareaccess.com",
 		ACCESS_AUD: options.access === false ? "" : "audience",
 		SYNC_SECRET: "sync-secret",
+		OWNER_SLUG: options.ownerSlug ?? "",
 	};
 }
 
@@ -249,16 +254,48 @@ describe("scoped client reading rooms", () => {
 		expect(bad.status).toBe(400);
 	});
 
-	it("leaves the unscoped manifest untouched", async () => {
+	it("404s the unscoped manifest so the public root cannot enumerate the catalog", async () => {
 		const env = environment(seededBucket(), { access: false });
 		const response = await handleRequest(
 			new Request("https://dashboard.example.com/api/tots"),
 			env,
 		);
-		expect(response.status).toBe(200);
-		const body = (await response.json()) as { tots: unknown[]; count: number };
-		expect(body.tots).toHaveLength(3);
+		expect(response.status).toBe(404);
+		expect(await response.text()).not.toContain("alpha");
+	});
+
+	it("returns the whole catalog for the owner slug and nothing when it is unset", async () => {
+		const env = environment(seededBucket(), { access: false, ownerSlug: "s3cr3troom" });
+		const owner = await handleRequest(
+			new Request("https://dashboard.example.com/api/tots?project=s3cr3troom"),
+			env,
+		);
+		expect(owner.status).toBe(200);
+		const body = (await owner.json()) as {
+			tots: Array<{ slug: string }>;
+			count: number;
+			capabilities: { manage: boolean };
+		};
+		// Untagged Tots included: the owner room matches everything, not a project.
+		expect(body.tots.map((tot) => tot.slug)).toEqual(["alpha", "beta", "gamma"]);
 		expect(body.count).toBe(3);
+		// Still read-only — management stays loopback-only.
+		expect(body.capabilities.manage).toBe(false);
+
+		// A near-miss slug is just an unknown room, not the catalog.
+		const near = await handleRequest(
+			new Request("https://dashboard.example.com/api/tots?project=s3cr3troo"),
+			env,
+		);
+		expect(((await near.json()) as { tots: unknown[] }).tots).toEqual([]);
+
+		// Unset OWNER_SLUG must never be matched by an empty or any other slug.
+		const unset = environment(seededBucket(), { access: false });
+		const attempt = await handleRequest(
+			new Request("https://dashboard.example.com/api/tots?project=s3cr3troom"),
+			unset,
+		);
+		expect(((await attempt.json()) as { tots: unknown[] }).tots).toEqual([]);
 	});
 
 	it("serves the dashboard shell at /<project> and leaves reserved names alone", async () => {
@@ -268,24 +305,35 @@ describe("scoped client reading rooms", () => {
 			assets: (request) => {
 				const pathname = new URL(request.url).pathname;
 				seen.push(pathname);
-				// Real Cloudflare Assets canonicalizes /index.html → 307 /. The shell
-				// route must request a path Assets serves 200 (the root), or a browser
-				// at /<project> is redirected to / and loses the project context.
-				if (pathname === "/index.html") {
-					return new Response(null, { status: 307, headers: { location: "/" } });
-				}
-				return new Response("dashboard");
+				// Assets runs with html_handling "none", so only literal file paths
+				// resolve. Anything else 404s here — a route that leans on Cloudflare
+				// canonicalizing a bare path (which 307s, and previously bounced a
+				// browser at /<project> straight back out of its room) fails loudly.
+				if (pathname === "/index.html") return new Response("landing");
+				if (pathname === "/room.html") return new Response("dashboard");
+				if (pathname === "/app.js") return new Response("script");
+				return new Response("not found", { status: 404 });
 			},
 		});
 
 		const room = await handleRequest(new Request("https://dashboard.example.com/canlis"), env);
 		expect(room.status).toBe(200);
 		expect(await room.text()).toBe("dashboard");
-		expect(seen.at(-1)).toBe("/");
+		expect(seen.at(-1)).toBe("/room.html");
 		expect(room.headers.get("content-security-policy")).toContain("frame-src 'self'");
 
+		// The root is the public landing page, never the SPA shell.
+		const root = await handleRequest(new Request("https://dashboard.example.com/"), env);
+		expect(root.status).toBe(200);
+		expect(await root.text()).toBe("landing");
+		expect(seen.at(-1)).toBe("/index.html");
+
 		// Reserved asset basenames fall through to normal asset handling.
-		await handleRequest(new Request("https://dashboard.example.com/app.js"), env);
+		const script = await handleRequest(
+			new Request("https://dashboard.example.com/app.js"),
+			env,
+		);
+		expect(script.status).toBe(200);
 		expect(seen.at(-1)).toBe("/app.js");
 	});
 });

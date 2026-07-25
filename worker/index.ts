@@ -17,6 +17,7 @@ const RESERVED_TOP_LEVEL = new Set([
 	"mirror",
 	"favicon.ico",
 	"index.html",
+	"room.html",
 	"app.js",
 	"app.css",
 	"reader-layout.js",
@@ -229,6 +230,19 @@ async function serveManifest(env: Env): Promise<Response> {
 }
 
 /**
+ * The owner's own reading room. OWNER_SLUG is a secret that behaves like any
+ * other project slug except that it matches every Tot, so the full catalog is
+ * reachable at one unguessable URL instead of at the public root. Unset (local
+ * dev, or a deploy before the secret is put) means no owner room exists — never
+ * treat an empty slug as a match.
+ */
+async function isOwnerSlug(env: Env, project: string): Promise<boolean> {
+	const owner = env.OWNER_SLUG;
+	if (!owner) return false;
+	return secretsMatch(project, owner);
+}
+
+/**
  * Scoped reading-room manifest: only Tots tagged with the project, filtered
  * server-side so a client view never receives the rest of the catalog. "Not
  * hidden" needs no check here — hidden entries are excluded from the manifest
@@ -236,6 +250,7 @@ async function serveManifest(env: Env): Promise<Response> {
  */
 async function serveScopedManifest(env: Env, project: string): Promise<Response> {
 	if (!PROJECT_SLUG_PATTERN.test(project)) return errorResponse(400, "invalid project slug");
+	const owner = await isOwnerSlug(env, project);
 	const empty = { tots: [], count: 0, capabilities: { manage: false } };
 	const object = await env.TOTS_BUCKET.get(MANIFEST_KEY);
 	if (!object) {
@@ -249,7 +264,9 @@ async function serveScopedManifest(env: Env, project: string): Promise<Response>
 	}
 	if (!isPublicManifest(value)) return errorResponse(500, "stored manifest is invalid");
 	// ponytail: linear scan, add an index if the catalog reaches thousands.
-	const tots = value.tots.filter((tot) => (tot.projects ?? []).includes(project));
+	const tots = owner
+		? value.tots
+		: value.tots.filter((tot) => (tot.projects ?? []).includes(project));
 	return jsonResponse({
 		tots,
 		count: tots.length,
@@ -426,6 +443,12 @@ function withDashboardSecurity(response: Response): Response {
 	return secured;
 }
 
+/** Serve one named asset file for a route whose URL is not that file's path. */
+async function serveAsset(request: Request, env: Env, url: URL, file: string): Promise<Response> {
+	const asset = new Request(new URL(file, url), request);
+	return withDashboardSecurity(await env.ASSETS.fetch(asset));
+}
+
 export async function handleRequest(request: Request, env: Env): Promise<Response> {
 	const url = new URL(request.url);
 	if (url.pathname === "/health") {
@@ -463,7 +486,12 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
 
 	if ((request.method === "GET" || request.method === "HEAD") && url.pathname === "/api/tots") {
 		const project = url.searchParams.get("project");
-		return project === null ? serveManifest(env) : serveScopedManifest(env, project);
+		// No unscoped catalog on the edge: it would list every mirrored Tot to
+		// anyone who curls it, which is exactly what the public root must not do.
+		// The owner reads the full set through their secret slug like any room.
+		// 404 rather than 401 — don't confirm there is something to unlock.
+		if (project === null) return errorResponse(404, "not found");
+		return serveScopedManifest(env, project);
 	}
 	if (
 		(request.method === "GET" || request.method === "HEAD") &&
@@ -474,17 +502,20 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
 	if (request.method !== "GET" && request.method !== "HEAD") {
 		return errorResponse(405, "method not allowed");
 	}
+	// The public root is a dead-end landing page: no catalog, no links into the
+	// rooms. Assets is configured with html_handling "none", so "/" maps to no
+	// file on its own and the Worker names the file it wants.
+	if (url.pathname === "/") {
+		return serveAsset(request, env, url, "/index.html");
+	}
 	// Scoped client reading room: any single-segment path that is not a reserved
 	// name is a candidate project slug. Serve the dashboard shell and let the SPA
 	// boot, read the slug from the URL, and fetch the scoped manifest — an
-	// unknown slug simply renders the empty state.
+	// unknown slug simply renders the empty state. The owner's secret slug is
+	// just another room to everything on this path.
 	const projectMatch = url.pathname.match(/^\/([a-z0-9][a-z0-9-]{0,63})$/);
 	if (projectMatch && !RESERVED_TOP_LEVEL.has(projectMatch[1]!)) {
-		// Fetch the root, not "/index.html": Cloudflare Assets canonicalizes
-		// /index.html → 307 /, which would bounce a browser at /<project> back to
-		// / and lose the project context. The root serves the same shell at 200.
-		const shell = new Request(new URL("/", url), request);
-		return withDashboardSecurity(await env.ASSETS.fetch(shell));
+		return serveAsset(request, env, url, "/room.html");
 	}
 	return withDashboardSecurity(await env.ASSETS.fetch(request));
 }

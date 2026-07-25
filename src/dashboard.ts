@@ -44,8 +44,10 @@ export interface DashboardInstance {
 
 const ASSET_DIR = fileURLToPath(new URL("../dashboard/", import.meta.url));
 const STATIC_ROUTES: Record<string, { file: string; contentType: string }> = {
-	"/": { file: "index.html", contentType: "text/html; charset=utf-8" },
-	"/index.html": { file: "index.html", contentType: "text/html; charset=utf-8" },
+	// The SPA shell is room.html; dashboard/index.html is the cloud's public
+	// landing page and is never served here — locally the root is the dashboard.
+	"/": { file: "room.html", contentType: "text/html; charset=utf-8" },
+	"/index.html": { file: "room.html", contentType: "text/html; charset=utf-8" },
 	"/app.css": { file: "app.css", contentType: "text/css; charset=utf-8" },
 	"/app.js": { file: "app.js", contentType: "text/javascript; charset=utf-8" },
 	"/reader-layout.js": {

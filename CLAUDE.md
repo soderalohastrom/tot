@@ -56,15 +56,36 @@ The two talk over a small HTTP contract: the CLI PUTs objects and a manifest to
 - **Management is capability-gated.** `/api/tots` returns `capabilities.manage`.
   It's `true` only for the loopback local dashboard (with an ephemeral token);
   the cloud mirror is read-only. Rename/hide/tag are local-metadata mutations.
+- **No unscoped catalog on the edge.** `/api/tots` with no `?project=` is a 404
+  in the Worker. Every cloud read is scoped to a room, including the owner's.
+  Restoring an unscoped listing re-exposes the whole mirror to `curl`.
+- **Assets serve literal paths.** `html_handling` is `"none"`, and the Worker
+  names the file for each route (`/` → `index.html`, `/<project>` →
+  `room.html`). The default mode 307s `/index.html` → `/` and `/room.html` →
+  `/room`; both have already caused shell-routing bugs. Don't rely on
+  canonicalization, and don't add a route that fetches a bare path.
 
 ## Access model (current state)
 
-Cloudflare Access verification in the Worker is **opt-in**, gated on both
-`ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` being set in `wrangler.jsonc`. They are
-currently **empty**, so the dashboard at palapala.me is **publicly readable**.
-Set both (and deploy) to require an Access JWT for browser routes. The `/api/sync/*`
-routes are always protected by the `SYNC_SECRET` bearer token (+ an Access
-service token when Access is on). See `docs/CLOUD_DASHBOARD.md`.
+Two layers, both currently in effect:
+
+1. **Room scoping.** The public root serves `dashboard/index.html` — a dead-end
+   landing page with no catalog and no links into the rooms. Content is only
+   reachable through `/<project>` (`/mise`, `/gohappy`), which the Worker
+   filters server-side. The owner's full catalog is `OWNER_SLUG`, a **secret**
+   holding an unguessable project slug that `serveScopedManifest` matches
+   against every Tot instead of filtering. Unset = no owner room exists; an
+   empty slug never matches. Rotate with `wrangler secret put OWNER_SLUG`.
+   This is curation, not secrecy: Tots stay public-by-link on tot.page, and
+   `/mirror/*` paths remain reachable if you already know slug + hash.
+2. **Cloudflare Access** verification in the Worker is **opt-in**, gated on both
+   `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` being set in `wrangler.jsonc`. They are
+   currently **empty**. Setting both requires an Access JWT for *all* browser
+   routes, which would put a login in front of the client rooms too — that is
+   why the rooms are gated by slug scoping instead.
+
+The `/api/sync/*` routes are always protected by the `SYNC_SECRET` bearer token
+(+ an Access service token when Access is on). See `docs/CLOUD_DASHBOARD.md`.
 
 ## Build · test · deploy · sync
 

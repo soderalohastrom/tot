@@ -10,6 +10,11 @@
 		"directory": "./dashboard",
 		"binding": "ASSETS",
 		"run_worker_first": true,
+		// Serve files at their literal paths. The default (auto-trailing-slash)
+		// 307s /index.html → / and /room.html → /room, which turned the /<project>
+		// shell fetch into a redirect the browser followed back into the slug
+		// route. The Worker picks the shell explicitly; Assets must not rewrite.
+		"html_handling": "none",
 	},
 	"r2_buckets": [
 		{
@@ -24,7 +29,9 @@
 		"ACCESS_AUD": "",
 	},
 	"secrets": {
-		"required": ["SYNC_SECRET"],
+		// OWNER_SLUG: the unguessable /<slug> that returns the whole catalog.
+		// Unset = no owner room; the root stays a landing page either way.
+		"required": ["SYNC_SECRET", "OWNER_SLUG"],
 	},
 	"observability": {
 		"enabled": true,
