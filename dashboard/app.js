@@ -163,7 +163,7 @@ function cardMarkup(tot, index) {
 				.join("")}</div>`
 		: "";
 	return `<article class="tot-card${tot.hidden ? " is-hidden" : ""}" style="--i:${index}">
-		<div class="preview"><iframe src="${escapeHtml(tot.url)}" loading="lazy" sandbox="allow-scripts allow-forms" tabindex="-1" title="Preview of ${escapeHtml(tot.title)}"></iframe></div>
+		<div class="preview"><iframe src="${escapeHtml(tot.localUrl || tot.url)}" loading="lazy" sandbox="allow-scripts allow-forms" tabindex="-1" title="Preview of ${escapeHtml(tot.title)}"></iframe></div>
 		<button class="select-card" type="button" data-select="${escapeHtml(tot.id)}" aria-label="Read ${escapeHtml(tot.title)}"></button>
 		${actions}
 		<div class="card-body">
@@ -203,7 +203,7 @@ function selectTot(id) {
 	if (!tot) return;
 	state.selected = id;
 	elements.readerTitle.textContent = tot.title;
-	elements.readerFrame.src = tot.url;
+	elements.readerFrame.src = tot.localUrl || tot.url;
 	elements.readerOpen.href = tot.originalUrl || tot.url;
 	elements.readerEmpty.hidden = true;
 	elements.readerActive.hidden = false;

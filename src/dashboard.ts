@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { Config, type DashboardEntryPatch, type RegistryEntry } from "./config.js";
+import { resolveLocalFilePath } from "./cloud-sync.js";
 
 export const DEFAULT_DASHBOARD_HOST = "127.0.0.1";
 export const DEFAULT_DASHBOARD_PORT = 4173;
@@ -81,6 +82,11 @@ export function dashboardTots(registry: Record<string, RegistryEntry>): Dashboar
 				entry.displayTitle || dashboardTitleFromFile(file, entry.docPath) || "Untitled Tot",
 			file,
 			url: entry.url,
+			// localUrl points at this server's /local-mirror/<slug> route so the
+			// iframe/reader can show the document straight from disk when the
+			// upstream tot.page edge is unreachable. Falls back to entry.url when
+			// the local source is gone (e.g. /tmp cleaned up).
+			localUrl: resolveLocalFilePath(file) ? `/local-mirror/${entry.slug}` : entry.url,
 			slug: entry.slug,
 			kind: entry.kind,
 			docPath: entry.docPath,
@@ -219,6 +225,50 @@ export function createDashboardHandler(
 
 		if (pathname === "/health") {
 			send(res, 200, JSON.stringify({ ok: true }), "application/json; charset=utf-8");
+			return;
+		}
+
+		// Local mirror: serve the on-disk source for a Tot straight from the
+		// dashboard's own server. Used by the SPA iframe/reader so the local
+		// dashboard stays readable even when the upstream tot.page edge 500s.
+		if (pathname.startsWith("/local-mirror/")) {
+			const slug = decodeURIComponent(pathname.slice("/local-mirror/".length));
+			if (!/^[A-Za-z0-9_-]+$/.test(slug)) {
+				send(res, 400, "invalid slug", "text/plain; charset=utf-8");
+				return;
+			}
+			const regs = registry();
+			const match = Object.entries(regs).find(
+				([, entry]) => entry.slug === slug,
+			);
+			if (!match) {
+				send(res, 404, "Tot not found", "text/plain; charset=utf-8");
+				return;
+			}
+			const [file] = match;
+			const localPath = resolveLocalFilePath(file);
+			if (!localPath) {
+				send(res, 404, "local source missing", "text/plain; charset=utf-8");
+				return;
+			}
+			try {
+				const body = fs.readFileSync(localPath);
+				const ext = path.extname(localPath).toLowerCase();
+				const contentType =
+					ext === ".html" || ext === ".htm"
+						? "text/html; charset=utf-8"
+						: ext === ".md" || ext === ".markdown"
+							? "text/markdown; charset=utf-8"
+							: "application/octet-stream";
+				send(res, 200, body, contentType, {
+					// Iframes should not cache stale bodies — editors save often.
+					"cache-control": "no-store",
+				});
+			} catch (error) {
+				const message =
+					error instanceof Error ? error.message : "failed to read local source";
+				send(res, 500, message, "text/plain; charset=utf-8");
+			}
 			return;
 		}
 
