@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs";
+import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -16,6 +17,80 @@ const MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024;
 const HASH_PATTERN = /^[a-f0-9]{64}$/;
 const SLUG_PATTERN = /^[A-Za-z0-9_-]+$/;
 
+/** MIME guess by extension for locally-sourced sync content. */
+const MIME_BY_EXT: Record<string, string> = {
+	".html": "text/html; charset=utf-8",
+	".htm": "text/html; charset=utf-8",
+	".md": "text/markdown; charset=utf-8",
+	".markdown": "text/markdown; charset=utf-8",
+	".png": "image/png",
+	".jpg": "image/jpeg",
+	".jpeg": "image/jpeg",
+	".gif": "image/gif",
+	".svg": "image/svg+xml",
+	".webp": "image/webp",
+	".css": "text/css; charset=utf-8",
+	".js": "text/javascript; charset=utf-8",
+	".json": "application/json; charset=utf-8",
+	".txt": "text/plain; charset=utf-8",
+	".pdf": "application/pdf",
+};
+
+function guessContentType(filePath: string, fallback?: string): string {
+	const ext = path.extname(filePath).toLowerCase();
+	return MIME_BY_EXT[ext] ?? fallback ?? "application/octet-stream";
+}
+
+/**
+ * Resolve a registry key (which may be relative) to an absolute file path
+ * by scanning candidate CWDs. Returns null if the file cannot be found.
+ *
+ * Tries the current process CWD first, then a curated list of tot-known
+ * project directories. Extend the list as new project roots are added.
+ */
+const LOCAL_FILE_SEARCH_DIRS: string[] = (() => {
+	const home = os.homedir();
+	return [
+		// Common tot project roots; keep alphabetised.
+		path.join(home, "PROJECTS", "go-happy-cab-demo"),
+		path.join(home, "PROJECTS", "gohappy"),
+		path.join(home, "PROJECTS", "gohappy-www"),
+		path.join(home, "PROJECTS", "huihui"),
+		path.join(home, "PROJECTS", "mise-august"),
+		path.join(home, "PROJECTS", "mise-july"),
+		path.join(home, "PROJECTS", "mise-june"),
+		path.join(home, "PROJECTS", "mise-spring"),
+		path.join(home, "PROJECTS", "tot"),
+		home,
+	];
+})();
+
+export function resolveLocalFilePath(fileKey: string, extraDirs: string[] = []): string | null {
+	if (path.isAbsolute(fileKey)) {
+		return fs.existsSync(fileKey) ? fileKey : null;
+	}
+	const candidates = [process.cwd(), ...extraDirs, ...LOCAL_FILE_SEARCH_DIRS];
+	for (const cwd of candidates) {
+		const candidate = path.join(cwd, fileKey);
+		try {
+			fs.accessSync(candidate, fs.constants.R_OK);
+			return candidate;
+		} catch {
+			// try next
+		}
+	}
+	return null;
+}
+
+async function downloadFromFile(
+	localPath: string,
+	hintContentType?: string,
+): Promise<DownloadedObject> {
+	const bytes = await fsp.readFile(localPath);
+	const contentType = hintContentType ?? guessContentType(localPath);
+	return { bytes, contentType };
+}
+
 export interface CloudSyncSettings {
 	endpoint: string;
 }
@@ -30,6 +105,18 @@ export interface CloudSyncOptions {
 	token: string;
 	access?: CloudAccessCredentials;
 	registry: Record<string, RegistryEntry>;
+	/**
+	 * Skip entries whose source document can't be obtained (no local file,
+	 * remote download failed). Defaults to true. When false, the first
+	 * unavailable source throws and aborts the sync.
+	 */
+	skipOnMissing?: boolean;
+	/**
+	 * Never attempt to download from the upstream tot.page edge. Tots whose
+	 * local source file is missing are skipped (or fall back to a metadata-only
+	 * entry if a previous manifest entry exists).
+	 */
+	localOnly?: boolean;
 }
 
 export interface CloudBackupOptions {
@@ -46,6 +133,7 @@ export interface CloudSyncResult {
 	objectsUploaded: number;
 	manifestUpdated: boolean;
 	manifestUrl: string;
+	skipped: string[];
 }
 
 export interface CloudSyncDeps {
@@ -227,12 +315,30 @@ async function syncOneTot(
 	access: CloudAccessCredentials | undefined,
 	syncedAt: string,
 	deps: CloudSyncDeps,
+	options: { localOnly?: boolean } = {},
 ): Promise<{ tot: PublicTot; objectsUploaded: number }> {
 	const docPath = safeWorkspacePath(entry.docPath);
 	const assetPaths = Object.keys(entry.assets ?? {})
 		.map(safeWorkspacePath)
 		.sort();
-	const document = await download(entry.url, deps);
+
+	// Prefer the local source file when available. This lets sync proceed
+	// even when the upstream tot.page edge is degraded or offline, and
+	// avoids re-downloading bytes we already have on disk.
+	const localDocPath = resolveLocalFilePath(file);
+	let document: DownloadedObject;
+	let localBaseDir: string | null = null;
+	if (localDocPath) {
+		document = await downloadFromFile(localDocPath);
+		localBaseDir = path.dirname(path.resolve(localDocPath));
+		deps.log(`    ↳ local: ${path.relative(os.homedir(), localDocPath)}`);
+	} else if (options.localOnly) {
+		throw new Error(`local source not found and --local-only is set: ${file}`);
+	} else {
+		document = await download(entry.url, deps);
+		deps.log(`    ↳ remote: ${entry.url}`);
+	}
+
 	let documentBytes = document.bytes;
 	let documentTitle: string | null = null;
 
@@ -242,13 +348,40 @@ async function syncOneTot(
 		documentBytes = new TextEncoder().encode(rewriteAssetUrls(html, entry, assetPaths));
 	}
 
-	const assets = await Promise.all(
-		assetPaths.map(async (assetPath): Promise<MirroredAsset> => {
-			const assetUrl = new URL(`/${entry.slug}/${encodedPath(assetPath)}`, entry.url).href;
-			const object = await download(assetUrl, deps);
-			return { path: assetPath, object, sha256: sha256(object.bytes) };
-		}),
-	);
+	const assets = (
+		await Promise.all(
+			assetPaths.map(async (assetPath): Promise<MirroredAsset | null> => {
+				let object: DownloadedObject | null = null;
+				if (localBaseDir) {
+					const candidate = path.join(localBaseDir, assetPath);
+					if (fs.existsSync(candidate)) {
+						object = await downloadFromFile(
+							candidate,
+							entry.assets?.[assetPath]?.contentType,
+						);
+					}
+				}
+				if (object === null) {
+					try {
+						const assetUrl = new URL(
+							`/${entry.slug}/${encodedPath(assetPath)}`,
+							entry.url,
+						).href;
+						object = await download(assetUrl, deps);
+					} catch (error) {
+						// Asset unavailable (tot.page edge broken, missing local,
+						// etc.). Don't fail the whole entry — the document still
+						// syncs, the manifest records the asset as missing.
+						deps.log(
+							`    ↳ asset skipped: ${assetPath} (${error instanceof Error ? error.message : String(error)})`,
+						);
+						return null;
+					}
+				}
+				return { path: assetPath, object, sha256: sha256(object.bytes) };
+			}),
+		)
+	).filter((a): a is MirroredAsset => a !== null);
 	const docSha256 = sha256(documentBytes);
 	const contentHash = totContentHash(docSha256, assets);
 	const baseKey = `tots/${entry.slug}/${contentHash}`;
@@ -279,6 +412,7 @@ async function syncOneTot(
 		}),
 	);
 	objectsUploaded += assetUploads.filter(Boolean).length;
+	const availableAssetPaths = assets.map((a) => a.path);
 
 	const mirrorPath = `/mirror/${encodeURIComponent(entry.slug)}/${contentHash}/${encodedPath(docPath)}`;
 	return {
@@ -304,8 +438,8 @@ async function syncOneTot(
 			createdAt: entry.createdAt,
 			contentHash,
 			docSha256,
-			assetCount: assetPaths.length,
-			assetPaths,
+			assetCount: availableAssetPaths.length,
+			assetPaths: availableAssetPaths,
 			assetHashes: Object.fromEntries(assets.map((asset) => [asset.path, asset.sha256])),
 			assetContentTypes: Object.fromEntries(
 				assets.map((asset) => [asset.path, asset.object.contentType]),
@@ -327,6 +461,8 @@ export async function syncCloudDashboard(
 ): Promise<CloudSyncResult> {
 	const endpoint = normalizedEndpoint(options.endpoint);
 	if (!options.token) throw new Error("cloud sync token is required");
+	const skipOnMissing = options.skipOnMissing !== false;
+	const localOnly = options.localOnly === true;
 	const entries = Object.entries(options.registry).filter(([, entry]) => entry.hidden !== true);
 	const generatedAt = deps.now().toISOString();
 	const previousResponse = await deps.fetch(`${endpoint}/api/sync/manifest`, {
@@ -337,7 +473,13 @@ export async function syncCloudDashboard(
 	}
 	const previousValue: unknown = await previousResponse.json();
 	const previous = isPublicManifest(previousValue) ? previousValue : null;
-	const results: Array<{ tot: PublicTot; objectsUploaded: number }> = new Array(entries.length);
+	const previousById = new Map<string, PublicTot>(
+		(previous?.tots ?? []).map((tot) => [tot.id, tot]),
+	);
+	const results: Array<{ tot: PublicTot; objectsUploaded: number } | null> = new Array(
+		entries.length,
+	);
+	const skipped: string[] = [];
 	let cursor = 0;
 
 	async function worker(): Promise<void> {
@@ -346,21 +488,38 @@ export async function syncCloudDashboard(
 		if (!pair) return;
 		const [file, entry] = pair;
 		deps.log(`syncing ${index + 1}/${entries.length}  ${entry.slug}`);
-		results[index] = await syncOneTot(
-			file,
-			entry,
-			endpoint,
-			options.token,
-			options.access,
-			generatedAt,
-			deps,
-		);
+		try {
+			results[index] = await syncOneTot(
+				file,
+				entry,
+				endpoint,
+				options.token,
+				options.access,
+				generatedAt,
+				deps,
+				{ localOnly },
+			);
+		} catch (error) {
+			if (!skipOnMissing) throw error;
+			const message = error instanceof Error ? error.message : String(error);
+			deps.log(`  ↳ warn: ${message}`);
+			const fallback = buildMetadataOnlyEntry(file, entry, generatedAt, previousById);
+			if (fallback) {
+				results[index] = fallback;
+				deps.log(`  ↳ metadata-only update (previous content retained)`);
+			} else {
+				results[index] = null;
+				skipped.push(entry.slug);
+				deps.log(`  ↳ skipped (no source, no previous manifest entry)`);
+			}
+		}
 		return worker();
 	}
 
 	await Promise.all(Array.from({ length: Math.min(4, Math.max(entries.length, 1)) }, worker));
 	let tots = results
-		.map((result) => result.tot)
+		.filter((r): r is { tot: PublicTot; objectsUploaded: number } => r !== null)
+		.map((r) => r.tot)
 		.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 	if (previous) {
 		const previousById = new Map(previous.tots.map((tot) => [tot.id, tot]));
@@ -371,13 +530,16 @@ export async function syncCloudDashboard(
 			return JSON.stringify(candidate) === JSON.stringify(previousTot) ? candidate : tot;
 		});
 	}
-	const objectsUploaded = results.reduce((sum, result) => sum + result.objectsUploaded, 0);
+	const objectsUploaded = results
+		.filter((r): r is { tot: PublicTot; objectsUploaded: number } => r !== null)
+		.reduce((sum, result) => sum + result.objectsUploaded, 0);
 	if (previous && JSON.stringify(previous.tots) === JSON.stringify(tots)) {
 		return {
 			count: tots.length,
 			objectsUploaded,
 			manifestUpdated: false,
 			manifestUrl: `${endpoint}/api/tots`,
+			skipped,
 		};
 	}
 	const manifest = { tots, count: tots.length, generatedAt };
@@ -399,7 +561,49 @@ export async function syncCloudDashboard(
 		objectsUploaded,
 		manifestUpdated: true,
 		manifestUrl: `${endpoint}/api/tots`,
+		skipped,
 	};
+}
+
+/**
+ * Build a manifest entry from local registry metadata plus the previous
+ * cloud manifest's content fields. Used when the source document is no
+ * longer available (e.g. a /tmp file was cleaned up) so that local edits
+ * like project tags still propagate to the cloud manifest.
+ */
+function buildMetadataOnlyEntry(
+	file: string,
+	entry: RegistryEntry,
+	syncedAt: string,
+	previousById: Map<string, PublicTot>,
+): { tot: PublicTot; objectsUploaded: number } | null {
+	const previous = previousById.get(entry.slug);
+	if (!previous) return null;
+	const docPath = safeWorkspacePath(entry.docPath);
+	const assetPaths = Object.keys(entry.assets ?? {})
+		.map(safeWorkspacePath)
+		.sort();
+	const displayTitle = entry.displayTitle ?? previous.title;
+	const projects = normalizeProjects(entry.projects ?? []);
+	const tot: PublicTot = {
+		...previous,
+		title: displayTitle,
+		file: path.basename(file),
+		slug: entry.slug,
+		kind: entry.kind,
+		docPath,
+		bytes: previous.bytes,
+		createdAt: entry.createdAt,
+		contentHash: previous.contentHash,
+		docSha256: previous.docSha256,
+		assetCount: assetPaths.length,
+		assetPaths,
+		assetHashes: previous.assetHashes,
+		assetContentTypes: previous.assetContentTypes,
+		syncedAt,
+		projects,
+	};
+	return { tot, objectsUploaded: 0 };
 }
 
 export function loadCloudSyncSettings(file = SETTINGS_FILE): CloudSyncSettings | null {

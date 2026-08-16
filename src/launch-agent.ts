@@ -83,11 +83,14 @@ export function launchAgentDefinitions(
 		{
 			label: SYNC_LABEL,
 			file: path.join(launchAgents, `${SYNC_LABEL}.plist`),
+			// Watch mode: instant push on ~/.tot change (debounced 2s) instead
+			// of a 5-min cron tick. local-only keeps it self-contained when
+			// the upstream tot.page edge is degraded.
 			plist: plist(
 				SYNC_LABEL,
-				[totExecutable, "dashboard", "sync", "--quiet"],
+				[totExecutable, "dashboard", "sync", "--watch", "--local-only", "--quiet"],
 				path.join(logs, "tot-dashboard-sync.log"),
-				{ startInterval: 300 },
+				{ keepAlive: true },
 			),
 		},
 	];

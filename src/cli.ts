@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -10,7 +11,8 @@ import {
 	updateCommand,
 	type CommandDeps,
 } from "./commands.js";
-import { Config } from "./config.js";
+import { Config, type RegistryEntry } from "./config.js";
+import { resolveLocalFilePath } from "./cloud-sync.js";
 import {
 	backupCloudDashboard,
 	cloudAccessCredentials,
@@ -172,17 +174,83 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
 			if (!token) throw new Error("cloud sync token was not found in Keychain");
 			const access = cloudAccessCredentials(endpoint);
 			if (!access) throw new Error("Cloudflare Access service credentials were not found");
-			const result = await syncCloudDashboard(
-				{ endpoint, token, access, registry: cfg.registry },
-				{
-					fetch,
-					now: () => new Date(),
-					log: args.flags.quiet === true ? () => {} : (message) => console.log(message),
-				},
-			);
-			console.log(
-				`cloud dashboard synced  ${result.count} tots, ${result.objectsUploaded} new objects, manifest ${result.manifestUpdated ? "updated" : "unchanged"}`,
-			);
+			const watch = args.flags.watch === true || args.flags.w === true;
+			const localOnly = args.flags["local-only"] === true;
+			const strict = args.flags.strict === true;
+			const debounceMs = Number(args.flags.debounce ?? 2000);
+			const runOnce = async () => {
+				const log = args.flags.quiet === true ? () => {} : (m: string) => console.log(m);
+				try {
+					// Always read fresh registry — edits may come from another process
+					// (the local dashboard SPA, the CLI on another shell, etc.).
+					const fresh = Config.load();
+					const result = await syncCloudDashboard(
+						{
+							endpoint,
+							token,
+							access,
+							registry: fresh.registry,
+							skipOnMissing: !strict,
+							localOnly,
+						},
+						{ fetch, now: () => new Date(), log },
+					);
+					console.log(
+						`cloud dashboard synced  ${result.count} tots, ${result.objectsUploaded} new objects, manifest ${result.manifestUpdated ? "updated" : "unchanged"}${result.skipped.length ? `  (skipped: ${result.skipped.join(", ")})` : ""}`,
+					);
+					return result;
+				} catch (error) {
+					console.error(
+						`sync failed: ${error instanceof Error ? error.message : String(error)}`,
+					);
+					return null;
+				}
+			};
+			if (!watch) {
+				await runOnce();
+				return 0;
+			}
+			// Watch mode: run once immediately, then re-run whenever ~/.tot changes.
+			await runOnce();
+			console.log(`watching ~/.tot (debounce ${debounceMs}ms) — Ctrl-C to stop`);
+			const registryPath = path.join(os.homedir(), ".tot");
+			let timer: NodeJS.Timeout | null = null;
+			let stopped = false;
+			const trigger = (label: string) => {
+				if (timer) clearTimeout(timer);
+				timer = setTimeout(async () => {
+					timer = null;
+					console.log(`\n[${new Date().toISOString()}] change detected (${label}) — syncing`);
+					await runOnce();
+				}, debounceMs);
+			};
+			const watcher = fs.watch(registryPath, { persistent: true }, (eventType) => {
+				if (!stopped) trigger(eventType);
+			});
+			// Some editors save by renaming; also poll mtime every 30s as a backstop.
+			let lastMtime = fs.statSync(registryPath).mtimeMs;
+			const poll = setInterval(() => {
+				if (stopped) return;
+				try {
+					const m = fs.statSync(registryPath).mtimeMs;
+					if (m !== lastMtime) {
+						lastMtime = m;
+						trigger("mtime");
+					}
+				} catch {
+					// file may have been moved; ignore
+				}
+			}, 30_000);
+			await new Promise<void>((resolve) => {
+				const cleanup = () => {
+					stopped = true;
+					watcher.close();
+					clearInterval(poll);
+					resolve();
+				};
+				process.on("SIGINT", cleanup);
+				process.on("SIGTERM", cleanup);
+			});
 			return 0;
 		}
 		if (dashboardCommand === "backup") {
@@ -273,6 +341,121 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
 				console.log(
 					`${entry.slug}  ${(entry.projects ?? []).join(", ") || "(no projects)"}`,
 				);
+			}
+			return 0;
+		}
+		if (
+			dashboardCommand === "tag-bulk" ||
+			dashboardCommand === "untag-bulk" ||
+			dashboardCommand === "hide-bulk" ||
+			dashboardCommand === "show-bulk"
+		) {
+			// Bulk tag/untag/hide/show — filter by title/file/sub slug match,
+			// then add or remove the project from each match.
+			const project = normalizeProjectSlug(args._[2] ?? "");
+			if (dashboardCommand === "tag-bulk" || dashboardCommand === "untag-bulk") {
+				if (!project) throw new Error(`usage: tot dashboard ${dashboardCommand} <project> [--match <substring>] [--match-regex <re>] [--limit N] [--dry-run]`);
+			} else {
+				if (args._[2]) throw new Error(`usage: tot dashboard ${dashboardCommand} [--match <substring>] [--match-regex <re>] [--limit N] [--dry-run]`);
+			}
+			const match = flagStr(args.flags, "match") ?? "";
+			const matchRegex = flagStr(args.flags, "match-regex");
+			const limitRaw = flagStr(args.flags, "limit");
+			const limit = limitRaw !== undefined ? Number(limitRaw) : Infinity;
+			const dryRun = args.flags["dry-run"] === true || args.flags.dry === true;
+			const yes = args.flags.yes === true || args.flags.y === true;
+			const re = matchRegex ? new RegExp(matchRegex, "i") : null;
+			if (matchRegex && re === null) throw new Error("invalid --match-regex");
+			const entries = Object.entries(cfg.registry).filter(([, e]) => e.hidden !== true);
+			const matches: Array<[string, RegistryEntry]> = [];
+			for (const pair of entries) {
+				const [file, entry] = pair;
+				// Also peek at the local file's <title> so matching works for
+				// freshly-published Tots whose displayTitle hasn't been set yet.
+				let htmlTitle = "";
+				try {
+					const absFile = resolveLocalFilePath(file);
+					if (absFile && entry.kind === "html") {
+						const html = fs.readFileSync(absFile, "utf8");
+						const m = html.match(/<title[^>]*>([^<]*)<\/title>/i);
+						if (m) htmlTitle = m[1];
+					}
+				} catch {
+					// ignore — fall back to slug/displayTitle match
+				}
+				const haystack = [
+					entry.slug,
+					entry.displayTitle ?? "",
+					htmlTitle,
+					entry.docPath,
+					file,
+				]
+					.join(" ")
+					.toLowerCase();
+				const ok =
+					(!match || haystack.includes(match.toLowerCase())) &&
+					(!re || re.test(haystack));
+				if (ok) matches.push(pair);
+			}
+			if (matches.length === 0) {
+				console.log(`no matches for --match=${match || "*"} ${re ? `--match-regex=${matchRegex}` : ""}`);
+				return 0;
+			}
+			if (Number.isFinite(limit)) matches.splice(limit);
+			console.log(`matched ${matches.length} entries:`);
+			let touched = 0;
+			for (const [file, entry] of matches) {
+				let changed = false;
+				let nextProjects = entry.projects ?? [];
+				if (dashboardCommand === "tag-bulk") {
+					if (!nextProjects.includes(project!)) {
+						nextProjects = [...nextProjects, project!];
+						changed = true;
+					}
+				} else if (dashboardCommand === "untag-bulk") {
+					if (nextProjects.includes(project!)) {
+						nextProjects = nextProjects.filter((p) => p !== project);
+						changed = true;
+					}
+				} else if (dashboardCommand === "hide-bulk") {
+					if (entry.hidden !== true) {
+						entry.hidden = true;
+						changed = true;
+					}
+				} else if (dashboardCommand === "show-bulk") {
+					if (entry.hidden === true) {
+						delete entry.hidden;
+						changed = true;
+					}
+				}
+				if (changed) {
+					cfg.updateDashboardEntry(entry.slug, {
+						...(dashboardCommand === "tag-bulk" || dashboardCommand === "untag-bulk"
+							? { projects: nextProjects.length > 0 ? nextProjects : null }
+							: { hidden: dashboardCommand === "hide-bulk" }),
+					});
+					touched++;
+				}
+				const projects = entry.projects ?? [];
+				console.log(
+					`  ${entry.slug}  ${(entry.displayTitle ?? path.basename(file)).slice(0, 50)}  [${projects.join(", ") || "—"}]${entry.hidden ? "  HIDDEN" : ""}${changed ? (dryRun ? "  (dry)" : "  ✓") : ""}`,
+				);
+			}
+			if (!dryRun && touched > 0 && !yes) {
+				console.log(`\nabout to write ${touched} change(s) to ~/.tot. press y to confirm.`);
+				const answer = await new Promise<string>((resolve) => {
+					process.stdin.once("data", (chunk) => resolve(chunk.toString().trim()));
+				});
+				if (answer.toLowerCase() !== "y") {
+					console.log("aborted; no changes saved.");
+					return 1;
+				}
+			}
+			if (!dryRun && touched > 0) {
+				cfg.save();
+				console.log(`\nwrote ${touched} change(s) to ~/.tot.`);
+			} else if (dryRun) {
+				console.log(`\n(dry run — no changes written. pass --yes to apply.)`);
 			}
 			return 0;
 		}
