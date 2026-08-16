@@ -51,6 +51,7 @@ const elements = {
 	readerResizer: document.querySelector("#reader-resizer"),
 	readerEmpty: document.querySelector(".reader-empty"),
 	readerActive: document.querySelector(".reader-active"),
+	readerMissing: document.querySelector(".reader-missing"),
 	readerTitle: document.querySelector("#reader-title"),
 	readerFrame: document.querySelector("#reader-frame"),
 	readerOpen: document.querySelector("#reader-open"),
@@ -163,7 +164,13 @@ function cardMarkup(tot, index) {
 				.join("")}</div>`
 		: "";
 	return `<article class="tot-card${tot.hidden ? " is-hidden" : ""}" style="--i:${index}">
-		<div class="preview"><iframe src="${escapeHtml(tot.localUrl || tot.url)}" loading="lazy" sandbox="allow-scripts allow-forms" tabindex="-1" title="Preview of ${escapeHtml(tot.title)}"></iframe></div>
+		<div class="preview">${tot.localUrl && tot.localUrl !== tot.url
+			? `<iframe src="${escapeHtml(tot.localUrl)}" loading="lazy" sandbox="allow-scripts allow-forms" tabindex="-1" title="Preview of ${escapeHtml(tot.title)}"></iframe>`
+			: `<div class="preview-placeholder" role="img" aria-label="Local source missing for ${escapeHtml(tot.title)}">
+					<span class="preview-glyph" aria-hidden="true">·</span>
+					<span class="preview-label">local source missing</span>
+					<span class="preview-hint">re-publish to restore</span>
+				</div>`}</div>
 		<button class="select-card" type="button" data-select="${escapeHtml(tot.id)}" aria-label="Read ${escapeHtml(tot.title)}"></button>
 		${actions}
 		<div class="card-body">
@@ -203,10 +210,13 @@ function selectTot(id) {
 	if (!tot) return;
 	state.selected = id;
 	elements.readerTitle.textContent = tot.title;
-	elements.readerFrame.src = tot.localUrl || tot.url;
+	const hasLocal = tot.localUrl && tot.localUrl !== tot.url;
+	elements.readerFrame.src = hasLocal ? tot.localUrl : "";
 	elements.readerOpen.href = tot.originalUrl || tot.url;
 	elements.readerEmpty.hidden = true;
-	elements.readerActive.hidden = false;
+	elements.readerActive.hidden = !hasLocal;
+	elements.readerMissing.hidden = hasLocal;
+	elements.readerFrame.hidden = !hasLocal;
 	elements.reader.classList.add("open");
 }
 
@@ -215,7 +225,9 @@ function closeReader() {
 	elements.reader.classList.remove("open");
 	elements.readerFrame.removeAttribute("src");
 	elements.readerActive.hidden = true;
+	elements.readerMissing.hidden = true;
 	elements.readerEmpty.hidden = false;
+	elements.readerFrame.hidden = false;
 }
 
 function setReaderWidth(width, { persist = false } = {}) {

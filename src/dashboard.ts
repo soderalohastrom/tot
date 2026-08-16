@@ -99,9 +99,14 @@ export function dashboardTots(registry: Record<string, RegistryEntry>): Dashboar
 }
 
 function securityHeaders(): Record<string, string> {
+	// The local dashboard serves the SPA which sets a CSS custom property
+	// inline (`style="--i:${index}"`) for stagger animations. Strict CSP
+	// would block that attribute, so we allow 'unsafe-inline' on style-src
+	// for the local server only. The cloud dashboard's worker applies its
+	// own stricter CSP via withDashboardSecurity().
 	return {
 		"content-security-policy":
-			"default-src 'self'; frame-src https:; img-src 'self' data: https:; style-src 'self'; script-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'",
+			"default-src 'self'; frame-src https: http://localhost:4173; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'",
 		"referrer-policy": "no-referrer",
 		"x-content-type-options": "nosniff",
 		"x-frame-options": "DENY",
