@@ -6,10 +6,20 @@ import {
 	readerWidthFromPointer,
 } from "./reader-layout.js";
 
+const LEGACY_VIEW_KEY = "tot-dashboard-view";
+const LEGACY_READER_WIDTH_KEY = "tot-dashboard-reader-width";
+const VIEW_KEY = "pala-dashboard-view";
+const READER_WIDTH_KEY = "pala-dashboard-reader-width";
+
+// Backwards-compatible read: existing browser state from the tot era lives
+// under the tot-* keys. Migrate on first read so the next write uses the
+// new key, but fall back silently if the new key is already set.
+const storedView = localStorage.getItem(VIEW_KEY) ?? localStorage.getItem(LEGACY_VIEW_KEY);
+
 const state = {
-	tots: [],
+	palas: [],
 	query: "",
-	view: localStorage.getItem("tot-dashboard-view") || "cards",
+	view: storedView || "cards",
 	selected: null,
 	signature: "",
 	canManage: false,
@@ -41,7 +51,7 @@ function humanizeProjectSlug(slug) {
 }
 
 const elements = {
-	grid: document.querySelector("#tot-grid"),
+	grid: document.querySelector("#pala-grid"),
 	search: document.querySelector("#search"),
 	count: document.querySelector("#result-count"),
 	hiddenToggle: document.querySelector("#hidden-toggle"),
@@ -72,8 +82,6 @@ const elements = {
 };
 
 const PROJECT_SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
-
-const READER_WIDTH_KEY = "tot-dashboard-reader-width";
 
 const icons = {
 	edit: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 20 4.2-1 10.9-10.9a2.2 2.2 0 0 0-3.2-3.2L5 15.8 4 20Z"></path><path d="m14.5 6.5 3 3"></path></svg>',
@@ -129,75 +137,77 @@ function formatBytes(bytes) {
 	return `${(bytes / 1024).toFixed(bytes < 10240 ? 1 : 0)} KB`;
 }
 
-function visibleTots() {
-	return state.tots
-		.filter((tot) => !tot.hidden || state.showHidden)
-		.map((tot) => ({
-			tot,
+function visiblePalas() {
+	return state.palas
+		.filter((pala) => !pala.hidden || state.showHidden)
+		.map((pala) => ({
+			pala,
 			score: fuzzyScore(
 				state.query,
-				`${tot.title} ${tot.file} ${tot.url} ${tot.slug} ${tot.kind} ${(tot.projects ?? []).join(" ")}`,
+				`${pala.title} ${pala.file} ${pala.url} ${pala.slug} ${pala.kind} ${(pala.projects ?? []).join(" ")}`,
 			),
 		}))
 		.filter(({ score }) => score > 0)
 		.sort((a, b) =>
-			state.query ? b.score - a.score : b.tot.createdAt.localeCompare(a.tot.createdAt),
+			state.query ? b.score - a.score : b.pala.createdAt.localeCompare(a.pala.createdAt),
 		)
-		.map(({ tot }) => tot);
+		.map(({ pala }) => pala);
 }
 
-function cardMarkup(tot, index) {
-	const editing = state.editing === tot.id;
+function cardMarkup(pala, index) {
+	const editing = state.editing === pala.id;
 	const actions =
 		state.canManage && state.view === "cards"
 			? `<div class="card-actions">
-				<button type="button" data-action="tag" data-id="${escapeHtml(tot.id)}" aria-label="Tag ${escapeHtml(tot.title)} by client or project" title="Tag by client / project">${icons.tag}</button>
-				<button type="button" data-action="edit" data-id="${escapeHtml(tot.id)}" aria-label="Rename ${escapeHtml(tot.title)}" title="Rename">${icons.edit}</button>
-				<button type="button" data-action="${tot.hidden ? "restore" : "hide"}" data-id="${escapeHtml(tot.id)}" aria-label="${tot.hidden ? "Restore" : "Hide or delete"} ${escapeHtml(tot.title)}" title="${tot.hidden ? "Restore to dashboard" : "Hide or delete"}">${tot.hidden ? icons.restore : icons.hide}</button>
+				<button type="button" data-action="tag" data-id="${escapeHtml(pala.id)}" aria-label="Tag ${escapeHtml(pala.title)} by client or project" title="Tag by client / project">${icons.tag}</button>
+				<button type="button" data-action="edit" data-id="${escapeHtml(pala.id)}" aria-label="Rename ${escapeHtml(pala.title)}" title="Rename">${icons.edit}</button>
+				<button type="button" data-action="${pala.hidden ? "restore" : "hide"}" data-id="${escapeHtml(pala.id)}" aria-label="${pala.hidden ? "Restore" : "Hide or delete"} ${escapeHtml(pala.title)}" title="${pala.hidden ? "Restore to dashboard" : "Hide or delete"}">${pala.hidden ? icons.restore : icons.hide}</button>
 			</div>`
 			: "";
 	// Owner-only: never show cross-room membership inside a client reading room.
-	const projects = state.canManage ? (tot.projects ?? []) : [];
+	const projects = state.canManage ? (pala.projects ?? []) : [];
 	const tagRow = projects.length
 		? `<div class="card-tags">${projects
 				.map((slug) => `<span class="card-tag">${escapeHtml(slug)}</span>`)
 				.join("")}</div>`
 		: "";
-	return `<article class="tot-card${tot.hidden ? " is-hidden" : ""}" style="--i:${index}">
-		<div class="preview">${tot.localUrl && tot.localUrl !== tot.url
-			? `<iframe src="${escapeHtml(tot.localUrl)}" loading="lazy" sandbox="allow-scripts allow-forms" tabindex="-1" title="Preview of ${escapeHtml(tot.title)}"></iframe>`
-			: `<div class="preview-placeholder" role="img" aria-label="Local source missing for ${escapeHtml(tot.title)}">
+	return `<article class="pala-card${pala.hidden ? " is-hidden" : ""}" style="--i:${index}">
+		<div class="preview">${pala.localUrl && pala.localUrl !== pala.url
+			? `<iframe src="${escapeHtml(pala.localUrl)}" loading="lazy" sandbox="allow-scripts allow-forms" tabindex="-1" title="Preview of ${escapeHtml(pala.title)}"></iframe>`
+			: pala.cloudUrl
+				? `<iframe src="${escapeHtml(pala.cloudUrl)}" loading="lazy" sandbox="allow-scripts allow-forms" tabindex="-1" title="Cloud preview of ${escapeHtml(pala.title)}"></iframe>`
+				: `<div class="preview-placeholder" role="img" aria-label="No source available for ${escapeHtml(pala.title)}">
 					<span class="preview-glyph" aria-hidden="true">·</span>
-					<span class="preview-label">local source missing</span>
+					<span class="preview-label">no source available</span>
 					<span class="preview-hint">re-publish to restore</span>
 				</div>`}</div>
-		<button class="select-card" type="button" data-select="${escapeHtml(tot.id)}" aria-label="Read ${escapeHtml(tot.title)}"></button>
+		<button class="select-card" type="button" data-select="${escapeHtml(pala.id)}" aria-label="Read ${escapeHtml(pala.title)}"></button>
 		${actions}
 		<div class="card-body">
-			<div class="card-topline"><span class="kind">${escapeHtml(tot.kind)}${tot.hidden ? ' · <b class="hidden-label">hidden</b>' : ""}</span><time datetime="${escapeHtml(tot.createdAt)}">${formatDate(tot.createdAt)}</time></div>
-			${editing ? `<form class="rename-form" data-rename="${escapeHtml(tot.id)}"><input name="title" value="${escapeHtml(tot.title)}" maxlength="160" aria-label="New title for ${escapeHtml(tot.title)}" /><span>Enter to save · Esc to cancel</span></form>` : `<h3 title="${escapeHtml(tot.title)}">${escapeHtml(tot.title)}</h3>`}
+			<div class="card-topline"><span class="kind">${escapeHtml(pala.kind)}${pala.hidden ? ' · <b class="hidden-label">hidden</b>' : ""}</span><time datetime="${escapeHtml(pala.createdAt)}">${formatDate(pala.createdAt)}</time></div>
+			${editing ? `<form class="rename-form" data-rename="${escapeHtml(pala.id)}"><input name="title" value="${escapeHtml(pala.title)}" maxlength="160" aria-label="New title for ${escapeHtml(pala.title)}" /><span>Enter to save · Esc to cancel</span></form>` : `<h3 title="${escapeHtml(pala.title)}">${escapeHtml(pala.title)}</h3>`}
 			${tagRow}
-			<p class="file-path" title="${escapeHtml(tot.file)}">${escapeHtml(tot.file)}</p>
-			<div class="card-footer"><span>${formatBytes(tot.bytes)}</span><a href="${escapeHtml(tot.originalUrl || tot.url)}" target="_blank" rel="noopener noreferrer">Open ↗</a></div>
+			<p class="file-path" title="${escapeHtml(pala.file)}">${escapeHtml(pala.file)}</p>
+			<div class="card-footer"><span>${formatBytes(pala.bytes)}</span><a href="${escapeHtml(pala.originalUrl || pala.url)}" target="_blank" rel="noopener noreferrer">Open ↗</a></div>
 		</div>
 	</article>`;
 }
 
 function render() {
-	const tots = visibleTots();
-	const hiddenCount = state.tots.filter((tot) => tot.hidden).length;
-	elements.count.textContent = `${tots.length} ${tots.length === 1 ? "page" : "pages"}`;
+	const palas = visiblePalas();
+	const hiddenCount = state.palas.filter((pala) => pala.hidden).length;
+	elements.count.textContent = `${palas.length} ${palas.length === 1 ? "page" : "pages"}`;
 	elements.hiddenToggle.hidden = !state.canManage || hiddenCount === 0;
 	elements.hiddenToggle.textContent = state.showHidden
 		? "Hide hidden"
 		: `Show hidden (${hiddenCount})`;
 	elements.hiddenToggle.setAttribute("aria-pressed", String(state.showHidden));
 	elements.grid.classList.toggle("list-view", state.view === "list");
-	if (!tots.length) {
+	if (!palas.length) {
 		elements.grid.replaceChildren(elements.emptyTemplate.content.cloneNode(true));
 		return;
 	}
-	elements.grid.innerHTML = tots.map(cardMarkup).join("");
+	elements.grid.innerHTML = palas.map(cardMarkup).join("");
 	const renameInput = elements.grid.querySelector(".rename-form input");
 	if (renameInput) {
 		renameInput.focus();
@@ -205,14 +215,14 @@ function render() {
 	}
 }
 
-function selectTot(id) {
-	const tot = state.tots.find((candidate) => candidate.id === id);
-	if (!tot) return;
+function selectPala(id) {
+	const pala = state.palas.find((candidate) => candidate.id === id);
+	if (!pala) return;
 	state.selected = id;
-	elements.readerTitle.textContent = tot.title;
-	const hasLocal = tot.localUrl && tot.localUrl !== tot.url;
-	elements.readerFrame.src = hasLocal ? tot.localUrl : "";
-	elements.readerOpen.href = tot.originalUrl || tot.url;
+	elements.readerTitle.textContent = pala.title;
+	const hasLocal = pala.localUrl && pala.localUrl !== pala.url;
+	elements.readerFrame.src = hasLocal ? pala.localUrl : (pala.cloudUrl || "");
+	elements.readerOpen.href = pala.cloudUrl || pala.originalUrl || pala.url;
 	elements.readerEmpty.hidden = true;
 	elements.readerActive.hidden = !hasLocal;
 	elements.readerMissing.hidden = hasLocal;
@@ -238,16 +248,25 @@ function setReaderWidth(width, { persist = false } = {}) {
 	elements.readerResizer.setAttribute("aria-valuemax", String(maximum));
 	elements.readerResizer.setAttribute("aria-valuenow", String(next));
 	elements.readerResizer.setAttribute("aria-valuetext", `${next} pixels wide`);
-	if (persist) localStorage.setItem(READER_WIDTH_KEY, String(next));
+	if (persist) {
+		localStorage.setItem(READER_WIDTH_KEY, String(next));
+		localStorage.removeItem(LEGACY_READER_WIDTH_KEY);
+	}
 }
 
 function resetReaderWidth() {
 	localStorage.removeItem(READER_WIDTH_KEY);
+	localStorage.removeItem(LEGACY_READER_WIDTH_KEY);
 	setReaderWidth(defaultReaderWidth(window.innerWidth));
 }
 
 function initializeReaderWidth() {
-	const saved = Number(localStorage.getItem(READER_WIDTH_KEY));
+	// Backwards-compatible read: prefer the new key, fall back to the tot-era
+	// key for users who never opened the pala binary. The next persist
+	// (resize gesture) writes to READER_WIDTH_KEY and clears the legacy.
+	const saved = Number(
+		localStorage.getItem(READER_WIDTH_KEY) ?? localStorage.getItem(LEGACY_READER_WIDTH_KEY),
+	);
 	setReaderWidth(
 		Number.isFinite(saved) && saved > 0 ? saved : defaultReaderWidth(window.innerWidth),
 	);
@@ -271,12 +290,12 @@ async function refresh({ quiet = false } = {}) {
 		const signature =
 			data.tots
 				.map(
-					(tot) =>
-						`${tot.id}:${tot.contentHash}:${tot.title}:${tot.url}:${tot.bytes}:${tot.createdAt}:${tot.hidden === true}:${(tot.projects ?? []).join(",")}`,
+					(pala) =>
+						`${pala.id}:${pala.contentHash}:${pala.title}:${pala.url}:${pala.bytes}:${pala.createdAt}:${pala.hidden === true}:${(pala.projects ?? []).join(",")}`,
 				)
 				.join("|") + `|manage:${canManage}`;
 		if (signature !== state.signature) {
-			state.tots = data.tots;
+			state.palas = data.tots;
 			state.signature = signature;
 			state.canManage = canManage;
 			state.adminToken = adminToken;
@@ -308,10 +327,10 @@ function showToast(message, tone = "success") {
 	}, 3600);
 }
 
-async function mutateTot(id, { method = "PATCH", body, success }) {
+async function mutatePala(id, { method = "PATCH", body, success }) {
 	if (!state.canManage || !state.adminToken) return;
 	try {
-		const headers = { "x-tot-dashboard-token": state.adminToken };
+		const headers = { "x-pala-dashboard-token": state.adminToken };
 		if (body !== undefined) headers["content-type"] = "application/json";
 		const response = await fetch(`/api/tots/${encodeURIComponent(id)}`, {
 			method,
@@ -325,7 +344,7 @@ async function mutateTot(id, { method = "PATCH", body, success }) {
 		await refresh({ quiet: true });
 		showToast(success);
 	} catch (error) {
-		showToast(error.message || "Could not update Tot", "error");
+		showToast(error.message || "Could not update pala", "error");
 	}
 }
 
@@ -335,14 +354,14 @@ function beginRename(id) {
 }
 
 function tagById(id) {
-	return state.tots.find((tot) => tot.id === id) ?? null;
+	return state.palas.find((pala) => pala.id === id) ?? null;
 }
 
 // Union of every project slug in use, so the input can suggest existing rooms
 // instead of making you retype "mise"/"gohappy".
 function allProjectSlugs() {
 	const slugs = new Set();
-	for (const tot of state.tots) for (const slug of tot.projects ?? []) slugs.add(slug);
+	for (const pala of state.palas) for (const slug of pala.projects ?? []) slugs.add(slug);
 	return [...slugs].sort();
 }
 
@@ -356,12 +375,12 @@ function showTagError(message) {
 	elements.tagError.hidden = false;
 }
 
-// Chips + suggestions always render from state.tots — the persisted source of
+// Chips + suggestions always render from state.palas — the persisted source of
 // truth — so the dialog reflects exactly what was saved after each change.
 function renderTagDialog() {
-	const tot = tagById(state.tagging);
-	if (!tot) return;
-	const projects = tot.projects ?? [];
+	const pala = tagById(state.tagging);
+	if (!pala) return;
+	const projects = pala.projects ?? [];
 	elements.tagChips.innerHTML = projects.length
 		? projects
 				.map(
@@ -378,10 +397,10 @@ function renderTagDialog() {
 }
 
 function openTagDialog(id) {
-	const tot = tagById(id);
-	if (!tot) return;
+	const pala = tagById(id);
+	if (!pala) return;
 	state.tagging = id;
-	elements.tagDialogTitle.textContent = tot.title;
+	elements.tagDialogTitle.textContent = pala.title;
 	elements.tagInput.value = "";
 	hideTagError();
 	renderTagDialog();
@@ -397,7 +416,7 @@ async function commitTags(id, projects) {
 		const response = await fetch(`/api/tots/${encodeURIComponent(id)}`, {
 			method: "PATCH",
 			headers: {
-				"x-tot-dashboard-token": state.adminToken,
+				"x-pala-dashboard-token": state.adminToken,
 				"content-type": "application/json",
 			},
 			body: JSON.stringify({ projects: projects.length ? projects : null }),
@@ -413,8 +432,8 @@ async function commitTags(id, projects) {
 }
 
 function addTagFromInput() {
-	const tot = tagById(state.tagging);
-	if (!tot) return;
+	const pala = tagById(state.tagging);
+	if (!pala) return;
 	const slug = elements.tagInput.value.trim().toLowerCase();
 	if (!slug) return;
 	if (!PROJECT_SLUG_PATTERN.test(slug)) {
@@ -422,34 +441,35 @@ function addTagFromInput() {
 		return;
 	}
 	elements.tagInput.value = "";
-	if ((tot.projects ?? []).includes(slug)) {
+	if ((pala.projects ?? []).includes(slug)) {
 		hideTagError();
 		return;
 	}
 	hideTagError();
-	commitTags(tot.id, [...(tot.projects ?? []), slug]);
+	commitTags(pala.id, [...(pala.projects ?? []), slug]);
 }
 
 function removeTag(slug) {
-	const tot = tagById(state.tagging);
-	if (!tot) return;
+	const pala = tagById(state.tagging);
+	if (!pala) return;
 	commitTags(
-		tot.id,
-		(tot.projects ?? []).filter((existing) => existing !== slug),
+		pala.id,
+		(pala.projects ?? []).filter((existing) => existing !== slug),
 	);
 }
 
 function openDeleteDialog(id) {
-	const tot = state.tots.find((candidate) => candidate.id === id);
-	if (!tot) return;
+	const pala = state.palas.find((candidate) => candidate.id === id);
+	if (!pala) return;
 	state.pendingDelete = id;
-	elements.deleteDescription.textContent = `“${tot.title}” can disappear from the dashboard without removing its published page.`;
+	elements.deleteDescription.textContent = `“${pala.title}” can disappear from the dashboard without removing its published page.`;
 	elements.deleteDialog.showModal();
 }
 
 function setView(view) {
 	state.view = view;
-	localStorage.setItem("tot-dashboard-view", view);
+	localStorage.setItem(VIEW_KEY, view);
+	localStorage.removeItem(LEGACY_VIEW_KEY);
 	document.querySelectorAll("[data-view]").forEach((button) => {
 		const active = button.dataset.view === view;
 		button.classList.toggle("active", active);
@@ -467,12 +487,12 @@ function currentTheme() {
 
 function setTheme(theme) {
 	document.documentElement.dataset.theme = theme;
-	localStorage.setItem("tot-dashboard-theme", theme);
+	localStorage.setItem("pala-dashboard-theme", theme);
 	document.querySelector("#theme-toggle").title =
 		`Switch to ${theme === "dark" ? "light" : "dark"} theme`;
 }
 
-const savedTheme = localStorage.getItem("tot-dashboard-theme");
+const savedTheme = localStorage.getItem("pala-dashboard-theme") ?? localStorage.getItem("tot-dashboard-theme");
 if (savedTheme) setTheme(savedTheme);
 else setTheme(currentTheme());
 setView(state.view);
@@ -481,7 +501,7 @@ setView(state.view);
 // it from the slug; Phase 2 will use branding metadata).
 if (state.project) {
 	const name = humanizeProjectSlug(state.project);
-	document.title = `${name} · Tot`;
+	document.title = `${name} · Pala`;
 	const eyebrow = document.querySelector(".eyebrow");
 	if (eyebrow) eyebrow.textContent = "Reading room";
 	const brandHeading = document.querySelector(".brand-lockup h1");
@@ -500,19 +520,19 @@ elements.grid.addEventListener("click", (event) => {
 		if (action.dataset.action === "edit") beginRename(id);
 		if (action.dataset.action === "hide") openDeleteDialog(id);
 		if (action.dataset.action === "restore") {
-			mutateTot(id, { body: { hidden: false }, success: "Tot restored to the dashboard" });
+			mutatePala(id, { body: { hidden: false }, success: "Pala restored to the dashboard" });
 		}
 		return;
 	}
 	const target = event.target.closest("[data-select]");
-	if (target) selectTot(target.dataset.select);
+	if (target) selectPala(target.dataset.select);
 });
 elements.grid.addEventListener("submit", (event) => {
 	const form = event.target.closest("[data-rename]");
 	if (!form) return;
 	event.preventDefault();
 	const title = new FormData(form).get("title");
-	mutateTot(form.dataset.rename, {
+	mutatePala(form.dataset.rename, {
 		body: { title: typeof title === "string" ? title : "" },
 		success: "Display name saved",
 	});
@@ -538,16 +558,16 @@ elements.hiddenToggle.addEventListener("click", () => {
 elements.hideConfirm.addEventListener("click", async () => {
 	const id = state.pendingDelete;
 	elements.deleteDialog.close();
-	if (id) await mutateTot(id, { body: { hidden: true }, success: "Tot hidden from dashboards" });
+	if (id) await mutatePala(id, { body: { hidden: true }, success: "Pala hidden from dashboards" });
 });
 elements.deleteConfirm.addEventListener("click", async () => {
 	const id = state.pendingDelete;
-	const tot = state.tots.find((candidate) => candidate.id === id);
-	if (!id || !tot) return;
-	if (!confirm(`Permanently delete “${tot.title}” and its published page?`)) return;
+	const pala = state.palas.find((candidate) => candidate.id === id);
+	if (!id || !pala) return;
+	if (!confirm(`Permanently delete “${pala.title}” and its published page?`)) return;
 	elements.deleteDialog.close();
 	if (state.selected === id) closeReader();
-	await mutateTot(id, { method: "DELETE", success: "Published Tot permanently deleted" });
+	await mutatePala(id, { method: "DELETE", success: "Published Pala permanently deleted" });
 });
 elements.deleteDialog.addEventListener("close", () => {
 	state.pendingDelete = null;

@@ -6,16 +6,20 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { Config, type DashboardEntryPatch, type RegistryEntry } from "./config.js";
-import { resolveLocalFilePath } from "./cloud-sync.js";
+import { fetchCloudManifest, loadCloudSyncSettings, resolveLocalFilePath } from "./cloud-sync.js";
 
 export const DEFAULT_DASHBOARD_HOST = "127.0.0.1";
 export const DEFAULT_DASHBOARD_PORT = 4173;
 
-export interface DashboardTot {
+export interface DashboardPala {
 	id: string;
 	title: string;
 	file: string;
 	url: string;
+	// cloudUrl is the cloud-dashboard mirror URL (palapala.me/mirror/<slug>/<hash>/<file>).
+	// Populated when the local source file is gone but the cloud manifest still
+	// has a contentHash for this slug. Falls back to entry.url otherwise.
+	cloudUrl: string;
 	slug: string;
 	kind: RegistryEntry["kind"];
 	docPath: string;
@@ -74,28 +78,66 @@ export function dashboardTitleFromFile(file: string, docPath: string): string {
 }
 
 /** Convert the private on-disk registry into the intentionally public browser shape. */
-export function dashboardTots(registry: Record<string, RegistryEntry>): DashboardTot[] {
+export function dashboardPalas(registry: Record<string, RegistryEntry>): DashboardPala[] {
 	return Object.entries(registry)
-		.map(([file, entry]) => ({
-			id: entry.slug,
-			title:
-				entry.displayTitle || dashboardTitleFromFile(file, entry.docPath) || "Untitled Tot",
-			file,
-			url: entry.url,
-			// localUrl points at this server's /local-mirror/<slug> route so the
-			// iframe/reader can show the document straight from disk when the
-			// upstream tot.page edge is unreachable. Falls back to entry.url when
-			// the local source is gone (e.g. /tmp cleaned up).
-			localUrl: resolveLocalFilePath(file) ? `/local-mirror/${entry.slug}` : entry.url,
-			slug: entry.slug,
-			kind: entry.kind,
-			docPath: entry.docPath,
-			bytes: entry.bytes,
-			createdAt: entry.createdAt,
-			hidden: entry.hidden === true,
-			projects: entry.projects ?? [],
-		}))
+		.map(([file, entry]) => {
+			const hasLocal = Boolean(resolveLocalFilePath(file));
+			return {
+				id: entry.slug,
+				title:
+					entry.displayTitle || dashboardTitleFromFile(file, entry.docPath) || "Untitled Pala",
+				file,
+				url: entry.url,
+				// localUrl points at this server's /local-mirror/<slug> route so the
+				// iframe/reader can show the document straight from disk when the
+				// upstream tot.page edge is unreachable. Falls back to entry.url when
+				// the local source is gone (e.g. /tmp cleaned up).
+				localUrl: hasLocal ? `/local-mirror/${entry.slug}` : entry.url,
+				// cloudUrl is populated by the dashboard handler with the
+				// palapala.me mirror URL from the live cloud manifest. Empty when
+				// the cloud doesn't have a hash for this slug.
+				cloudUrl: "",
+				slug: entry.slug,
+				kind: entry.kind,
+				docPath: entry.docPath,
+				bytes: entry.bytes,
+				createdAt: entry.createdAt,
+				hidden: entry.hidden === true,
+				projects: entry.projects ?? [],
+			};
+		})
 		.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+/**
+ * Merge the live cloud manifest into the dashboard output so the SPA can
+ * pick a working iframe src even when the local source file is gone.
+ *
+ * The cloud manifest is fetched with the same auth the sync uses. It can
+ * fail (no cloud configured, keychain missing, network down) — that's fine,
+ * we just leave cloudUrl empty for those Tots.
+ */
+async function dashboardPalasWithCloud(
+	registry: Record<string, RegistryEntry>,
+): Promise<DashboardPala[]> {
+	const palas = dashboardPalas(registry);
+	const cloud = await fetchCloudManifest();
+	if (!cloud) return palas;
+	const settings = loadCloudSyncSettings();
+	if (!settings) return palas;
+	const byId = new Map(cloud.map((t) => [t.id, t]));
+	for (const pala of palas) {
+		const cloudPala = byId.get(pala.id);
+		if (
+			cloudPala &&
+			typeof cloudPala.url === "string" &&
+			cloudPala.url.startsWith("/mirror/")
+		) {
+			const url = new URL(settings.endpoint);
+			pala.cloudUrl = `${url.host === "tot-dashboard.scott-c93.workers.dev" ? "https://palapala.me" : url.origin}${cloudPala.url}`;
+		}
+	}
+	return palas;
 }
 
 function securityHeaders(): Record<string, string> {
@@ -172,7 +214,7 @@ export function createDashboardHandler(
 					send(
 						res,
 						404,
-						JSON.stringify({ error: "Tot not found" }),
+						JSON.stringify({ error: "Pala not found" }),
 						"application/json; charset=utf-8",
 					);
 					return;
@@ -199,15 +241,21 @@ export function createDashboardHandler(
 
 		if (pathname === "/api/tots") {
 			try {
-				const tots = dashboardTots(registry());
-				const hiddenCount = tots.filter((tot) => tot.hidden).length;
+				const palas = await dashboardPalasWithCloud(registry());
+				const hiddenCount = palas.filter((pala) => pala.hidden).length;
 				const canManage = adminToken !== null && isLocalDashboardRequest(req);
+				// Wire shape stays `tots: []` for back-compat with the cloud
+				// dashboard at palapala.me, which already serves /api/tots under
+				// that key. The SPA reads data.tots for both local + cloud, so
+				// renaming the field would break reading rooms until a
+				// coordinated cloud deploy. Path A rebrand is cosmetic; the
+				// wire shape migrates in Path B (PALAPALA_TAKEOVER).
 				send(
 					res,
 					200,
 					JSON.stringify({
-						tots,
-						count: tots.length - hiddenCount,
+						tots: palas,
+						count: palas.length - hiddenCount,
 						hiddenCount,
 						generatedAt: new Date().toISOString(),
 						capabilities: canManage
@@ -225,6 +273,39 @@ export function createDashboardHandler(
 					"application/json; charset=utf-8",
 				);
 			}
+			return;
+		}
+
+		// Server-side redirect to the cloud mirror for a slug, so iframes can
+		// stay same-origin even when the local source is gone.
+		if (pathname.startsWith("/api/cloud-mirror/")) {
+			const slug = decodeURIComponent(pathname.slice("/api/cloud-mirror/".length));
+			if (!/^[A-Za-z0-9_-]+$/.test(slug)) {
+				send(res, 400, "invalid slug", "text/plain; charset=utf-8");
+				return;
+			}
+			const settings = loadCloudSyncSettings();
+			if (!settings) {
+				send(res, 503, "cloud dashboard not configured", "text/plain; charset=utf-8");
+				return;
+			}
+			const cloud = await fetchCloudManifest();
+			const cloudPala = cloud?.find((t) => t.id === slug);
+			if (!cloudPala) {
+				send(res, 404, "no cloud mirror for this slug", "text/plain; charset=utf-8");
+				return;
+			}
+			const url = new URL(settings.endpoint);
+			const origin =
+				url.host === "tot-dashboard.scott-c93.workers.dev"
+					? "https://palapala.me"
+					: url.origin;
+			const redirectTo = origin + cloudPala.url;
+			res.writeHead(302, {
+				location: redirectTo,
+				"cache-control": "no-store",
+			});
+			res.end();
 			return;
 		}
 
@@ -247,7 +328,7 @@ export function createDashboardHandler(
 				([, entry]) => entry.slug === slug,
 			);
 			if (!match) {
-				send(res, 404, "Tot not found", "text/plain; charset=utf-8");
+				send(res, 404, "Pala not found", "text/plain; charset=utf-8");
 				return;
 			}
 			const [file] = match;
@@ -298,7 +379,7 @@ export function createDashboardHandler(
 
 function isLocalMutation(req: IncomingMessage, expectedToken: string): boolean {
 	if (!isLocalDashboardRequest(req)) return false;
-	const provided = req.headers["x-tot-dashboard-token"];
+	const provided = req.headers["x-pala-dashboard-token"];
 	if (typeof provided !== "string") return false;
 	const providedBytes = Buffer.from(provided);
 	const expectedBytes = Buffer.from(expectedToken);

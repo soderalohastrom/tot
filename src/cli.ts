@@ -59,20 +59,23 @@ function flagStr(flags: Record<string, string | true>, name: string): string | u
 	return typeof v === "string" ? v : undefined;
 }
 
-const HELP = `tot — publish a page to tot.page
+const HELP = `pala — write it, keep it.
 
-  tot <file>              publish a raw markdown or html file
-  tot update <file|url>   push new content to the same living URL
-  tot remove <file|url>   delete a page (anyone with the link can; so can you)
-  tot list                list pages you've published from this machine
-  tot dashboard           browse your published pages at localhost
-  tot dashboard sync      mirror local pages to the configured cloud dashboard
-  tot dashboard backup    download a restorable cloud archive
-  tot dashboard restore   restore the cloud mirror from an archive
-  tot dashboard tag <slug|url> <project>    tag a page into a client reading room
-  tot dashboard untag <slug|url> <project>  remove a project tag from a page
-  tot dashboard tags [<slug|url>]           list project tags (all pages, or one)
-  tot login --key <KEY>   save a pre-minted wsk_live_ key to ~/.tot (optional)
+  pala <file>             publish a raw markdown or html file
+  pala update <file|url>  push new content to the same living URL
+  pala remove <file|url>  delete a page (anyone with the link can; so can you)
+  pala list               list pages you've published from this machine
+  pala dashboard          browse your published pages at localhost
+  pala dashboard sync     mirror local pages to the configured cloud dashboard
+  pala dashboard backup   download a restorable cloud archive
+  pala dashboard restore  restore the cloud mirror from an archive
+  pala dashboard tag <slug|url> <project>    tag a page into a client reading room
+  pala dashboard untag <slug|url> <project>  remove a project tag from a page
+  pala dashboard tags [<slug|url>]           list project tags (all pages, or one)
+  pala login --key <KEY>  save a pre-minted wsk_live_ key to ~/.tot (optional)
+
+  The \`tot\` binary is kept as an alias for one minor so existing scripts keep
+  working — both names invoke the same code.
 
 flags
   --endpoint <url>     override the API origin (default https://workspaces.plannotator.ai)
@@ -138,7 +141,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
 	if (cmd === "login") {
 		const key = flagStr(args.flags, "key") ?? cfg.key ?? undefined;
 		if (!key) {
-			console.error("provide a key:  tot login --key <KEY>");
+			console.error("provide a key:  pala login --key <KEY>");
 			return 1;
 		}
 		await loginCommand(key, cfg, deps);
@@ -155,7 +158,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
 		if (dashboardCommand === "configure") {
 			const endpoint = flagStr(args.flags, "cloud") ?? args._[2];
 			const token = process.env.TOT_DASHBOARD_SYNC_TOKEN;
-			if (!endpoint) throw new Error("usage: tot dashboard configure <cloud-url>");
+			if (!endpoint) throw new Error("usage: pala dashboard configure <cloud-url>");
 			if (!token) {
 				throw new Error("set TOT_DASHBOARD_SYNC_TOKEN before configuring cloud sync");
 			}
@@ -168,7 +171,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
 			const settings = loadCloudSyncSettings();
 			const endpoint = flagStr(args.flags, "cloud") ?? settings?.endpoint;
 			if (!endpoint) {
-				throw new Error("configure cloud sync first: tot dashboard configure <cloud-url>");
+				throw new Error("configure cloud sync first: pala dashboard configure <cloud-url>");
 			}
 			const token = cloudSyncToken(endpoint);
 			if (!token) throw new Error("cloud sync token was not found in Keychain");
@@ -196,7 +199,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
 						{ fetch, now: () => new Date(), log },
 					);
 					console.log(
-						`cloud dashboard synced  ${result.count} tots, ${result.objectsUploaded} new objects, manifest ${result.manifestUpdated ? "updated" : "unchanged"}${result.skipped.length ? `  (skipped: ${result.skipped.join(", ")})` : ""}`,
+						`cloud dashboard synced  ${result.count} palas, ${result.objectsUploaded} new objects, manifest ${result.manifestUpdated ? "updated" : "unchanged"}${result.skipped.length ? `  (skipped: ${result.skipped.join(", ")})` : ""}`,
 					);
 					return result;
 				} catch (error) {
@@ -212,7 +215,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
 			}
 			// Watch mode: run once immediately, then re-run whenever ~/.tot changes.
 			await runOnce();
-			console.log(`watching ~/.tot (debounce ${debounceMs}ms) — Ctrl-C to stop`);
+			console.log(`watching ~/.tot for changes (debounce ${debounceMs}ms) — Ctrl-C to stop`);
 			const registryPath = path.join(os.homedir(), ".tot");
 			let timer: NodeJS.Timeout | null = null;
 			let stopped = false;
@@ -292,19 +295,19 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
 		}
 		if (dashboardCommand === "install-agent") {
 			const definitions = installDashboardLaunchAgents();
-			console.log(`installed ${definitions.length} LaunchAgents (dashboard + 5-minute sync)`);
+			console.log(`installed ${definitions.length} LaunchAgents (dashboard + watch-mode sync)`);
 			return 0;
 		}
 		if (dashboardCommand === "uninstall-agent") {
 			const definitions = uninstallDashboardLaunchAgents();
-			console.log(`removed ${definitions.length} Tot Dashboard LaunchAgents`);
+			console.log(`removed ${definitions.length} Pala Dashboard LaunchAgents`);
 			return 0;
 		}
 		if (dashboardCommand === "tag" || dashboardCommand === "untag") {
 			const target = args._[2];
 			const project = args._[3];
 			if (!target || !project) {
-				throw new Error(`usage: tot dashboard ${dashboardCommand} <slug|url> <project>`);
+				throw new Error(`usage: pala dashboard ${dashboardCommand} <slug|url> <project>`);
 			}
 			const slug = normalizeProjectSlug(project);
 			if (!slug) throw new Error(`invalid project slug: ${project}`);
@@ -354,9 +357,9 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
 			// then add or remove the project from each match.
 			const project = normalizeProjectSlug(args._[2] ?? "");
 			if (dashboardCommand === "tag-bulk" || dashboardCommand === "untag-bulk") {
-				if (!project) throw new Error(`usage: tot dashboard ${dashboardCommand} <project> [--match <substring>] [--match-regex <re>] [--limit N] [--dry-run]`);
+				if (!project) throw new Error(`usage: pala dashboard ${dashboardCommand} <project> [--match <substring>] [--match-regex <re>] [--limit N] [--dry-run]`);
 			} else {
-				if (args._[2]) throw new Error(`usage: tot dashboard ${dashboardCommand} [--match <substring>] [--match-regex <re>] [--limit N] [--dry-run]`);
+				if (args._[2]) throw new Error(`usage: pala dashboard ${dashboardCommand} [--match <substring>] [--match-regex <re>] [--limit N] [--dry-run]`);
 			}
 			const match = flagStr(args.flags, "match") ?? "";
 			const matchRegex = flagStr(args.flags, "match-regex");
@@ -486,14 +489,14 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
 				},
 			},
 		});
-		console.log(`tot dashboard  ${instance.url}`);
+		console.log(`pala dashboard  ${instance.url}`);
 		return 0;
 	}
 
 	if (cmd === "update") {
 		const target = args._[1];
 		if (!target) {
-			console.error("usage: tot update <file|url>");
+			console.error("usage: pala update <file|url>");
 			return 1;
 		}
 		await updateCommand(target, cfg, deps, {
@@ -506,7 +509,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
 	if (cmd === "remove" || cmd === "rm" || cmd === "delete") {
 		const target = args._[1];
 		if (!target) {
-			console.error("usage: tot remove <file|url>");
+			console.error("usage: pala remove <file|url>");
 			return 1;
 		}
 		await removeCommand(target, cfg, deps);

@@ -6,6 +6,85 @@ see [`ROADMAP.md`](ROADMAP.md).
 
 ---
 
+## 2026-08-18 — Tot → Pala rebrand (cosmetic PR; Path A)
+
+**Status:** Path A shipped as one commit on `main`. Path B (publishing Worker
+against R2 + D1, cutover from `tot.page`) is held until the morning call.
+
+**What's in this PR (one commit, ~12 files):**
+
+- **CLI binary rename.** `package.json` `bin.pala` is the new entrypoint;
+  `bin.tot` now points at `dist/tot-shim.js` which re-runs `cli.ts` `main()` so
+  the alias keeps working for one minor. `findTotExecutable()` in
+  `launch-agent.ts` tries `pala` first, then `tot`. Help text, error messages,
+  log strings, and the install/remove LaunchAgent messages all say `pala`.
+- **Dashboard chrome.** `room.html`: title (`Pala Dashboard`), h1 (`Pala Index`),
+  empty-state h2 (`Select a pala`), reader missing-state copy, dialog labels,
+  and the inline-SVG plumeria mark in the masthead. `index.html` (the cloud
+  landing page) gets the same plumeria. `app.js`: `state.tots` → `state.palas`,
+  `visibleTots()` / `cardMarkup(tot, ...)` / `selectTot(id)` /
+  `mutateTot(id, ...)` all renamed; localStorage keys moved to
+  `pala-dashboard-view` / `pala-dashboard-reader-width` /
+  `pala-dashboard-theme` with **one-minor backwards-compat reads** for the
+  `tot-dashboard-*` keys (read on boot, cleared on next write). HTTP header
+  `x-tot-dashboard-token` → `x-pala-dashboard-token`. `app.css`: `.tot-card`
+  and `.tot-grid` selectors → `.pala-card` / `.pala-grid` (sed, 14 sites);
+  `.brand-mark span` → `.brand-mark svg` to size the plumeria inside the
+  58×58 mark frame.
+- **Source renames (internal).** `DashboardTot` → `DashboardPala`,
+  `dashboardTots()` → `dashboardPalas()`. The on-the-wire shape returned at
+  `/api/tots` stays `{ tots: [...] }` (cloud back-compat — see note below);
+  `PublicTot` interface name kept as-is for the same reason. LaunchAgent
+  labels → `com.paumalu.pala-dashboard` / `com.paumalu.pala-dashboard-sync`;
+  log paths → `~/Library/Logs/pala-dashboard[-sync].log`.
+- **Defaults.** Default `title` for an unnamed cloud-published pala:
+  `Untitled Tot` → `Untitled Pala`. Command help text now leads with the
+  slogan: `pala — write it, keep it.`
+- **Docs.** `README.md` rewritten to lead with `pala` and the slogan; the
+  legacy `tot` binary is documented as a one-minor alias. `AGENTS.md` title
+  and CLI examples updated.
+- **Pre-existing test fix (incidental).** `launch-agent.test.ts` asserted
+  `<key>StartInterval</key>` on the sync plist, but the source moved to
+  KeepAlive + `--watch` in commit 370eccc. Updated the test to match the
+  source and added `--watch` / `--local-only` assertions. Not strictly part
+  of the rebrand, but the rebrand would have failed `pnpm test` without it.
+
+**Smoke test (passed):** `pala /tmp/mise-clean-slate-milestone-tot.html
+--title "Mise — clean-slate milestone" --description "..."` published a new
+slug on tot.page; the 8-day-old milestone tot (`FSMFFqxYRXBI-9OlO0_8ZA`)
+still loads via its old `tot.page/...` URL (slugs are durable; the rebrand
+ +
+  smoke test exercises the same upload path the original milestone used).
+
+**What deliberately did NOT change:**
+
+- **`~/.tot` registry path.** Per Hermes' brief — migrating the on-disk path
+  risks breaking external scripts. Documented in the README as a possible
+  future minor.
+- **`/api/tots` JSON wire shape.** Still `{ tots: [...], count, hiddenCount,
+  generatedAt, capabilities }`. The cloud at palapala.me serves this same
+  shape; renaming the field would break every reading room until a
+  coordinated cloud deploy. The `palas` rename happens to the **internal**
+  state (`state.palas`), not the wire.
+- **`PublicTot` TypeScript interface name.** Same wire-compat reason. The
+  dashboard's `DashboardPala` is a separate local-only type.
+- **tot.page URLs, R2 bucket name (`tot-dashboard-archive`), `SYNC_SECRET`,
+  `OWNER_SLUG`, `TOT_DASHBOARD_SYNC_TOKEN` env var.** All operational; out
+  of scope for the cosmetic rebrand.
+- **`site/landing.html` and `site/api.html`.** Upstream marketing material
+  (snapshotted into this repo). The fork does not own those pages; Path B
+  will replace them when the publisher is self-hosted.
+
+**Path B is held.** Do not preempt the morning call. The publishing Worker
+plan — R2 + D1, cutover from `tot.page`, R2-backed frozen snapshot URLs —
+lives in `docs/PALAPALA_TAKEOVER.md` and the milestone totem of the call.
+
+---
+
+## 2026-07-25 — Public root closed behind a secret owner slug
+
+---
+
 ## 2026-07-25 — Public root closed behind a secret owner slug
 
 The dashboard was already deployed and current; this session changed the access

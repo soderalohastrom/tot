@@ -98,9 +98,10 @@ a {
 	transform: rotate(-4deg);
 	box-shadow: 5px 5px 0 var(--ink);
 }
-.brand-mark span {
-	font: italic 700 42px/1 var(--serif);
-	transform: rotate(4deg) translateY(-2px);
+.brand-mark svg {
+	width: 70%;
+	height: 70%;
+	transform: rotate(4deg);
 }
 /* Public root (index.html): a dead end. No catalog, no links into the rooms. */
 .landing {
@@ -373,12 +374,12 @@ body.is-resizing-reader iframe {
 	color: var(--accent);
 }
 
-.tot-grid {
+.pala-grid {
 	display: grid;
 	grid-template-columns: repeat(auto-fill, minmax(min(290px, 100%), 1fr));
 	gap: 22px;
 }
-.tot-card {
+.pala-card {
 	position: relative;
 	min-width: 0;
 	border: 1px solid var(--line-strong);
@@ -391,15 +392,15 @@ body.is-resizing-reader iframe {
 		transform 170ms ease,
 		box-shadow 170ms ease;
 }
-.tot-card:hover {
+.pala-card:hover {
 	transform: translateY(-4px);
 	box-shadow: var(--shadow);
 }
-.tot-card.is-hidden {
+.pala-card.is-hidden {
 	opacity: 0.68;
 	border-style: dashed;
 }
-.tot-card.is-hidden:hover {
+.pala-card.is-hidden:hover {
 	opacity: 1;
 }
 .preview {
@@ -488,8 +489,8 @@ body.is-resizing-reader iframe {
 		opacity 140ms ease,
 		transform 140ms ease;
 }
-.tot-card:hover .card-actions,
-.tot-card:focus-within .card-actions {
+.pala-card:hover .card-actions,
+.pala-card:focus-within .card-actions {
 	opacity: 1;
 	transform: translateY(0);
 }
@@ -545,7 +546,7 @@ body.is-resizing-reader iframe {
 .hidden-label {
 	font-weight: inherit;
 }
-.tot-card h3 {
+.pala-card h3 {
 	margin: 0 0 8px;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -608,11 +609,11 @@ body.is-resizing-reader iframe {
 	color: var(--accent);
 }
 
-.tot-grid.list-view {
+.pala-grid.list-view {
 	display: block;
 	border-top: 1px solid var(--line-strong);
 }
-.list-view .tot-card {
+.list-view .pala-card {
 	display: grid;
 	grid-template-columns: 72px minmax(170px, 1.4fr) minmax(120px, 1fr) 90px 60px;
 	align-items: center;
@@ -622,7 +623,7 @@ body.is-resizing-reader iframe {
 	background: transparent;
 	box-shadow: none;
 }
-.list-view .tot-card:hover {
+.list-view .pala-card:hover {
 	transform: none;
 	background: var(--accent-soft);
 }
@@ -643,7 +644,7 @@ body.is-resizing-reader iframe {
 	grid-column: 4;
 	font: 9px var(--mono);
 }
-.list-view .tot-card h3 {
+.list-view .pala-card h3 {
 	grid-column: 2;
 	grid-row: 1;
 	margin: 0;
@@ -1001,8 +1002,9 @@ body.is-resizing-reader iframe {
 		width: 46px;
 		height: 46px;
 	}
-	.brand-mark span {
-		font-size: 33px;
+	.brand-mark svg {
+		width: 76%;
+		height: 76%;
 	}
 	.eyebrow {
 		display: none;
@@ -1036,14 +1038,14 @@ body.is-resizing-reader iframe {
 		flex-direction: column-reverse;
 		align-items: flex-end;
 	}
-	.list-view .tot-card {
+	.list-view .pala-card {
 		grid-template-columns: 58px 1fr 46px;
 	}
 	.list-view .file-path,
 	.list-view .card-topline time {
 		display: none;
 	}
-	.list-view .tot-card h3 {
+	.list-view .pala-card h3 {
 		grid-column: 2;
 	}
 	.list-view .card-footer a {

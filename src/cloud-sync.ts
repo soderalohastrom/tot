@@ -142,7 +142,7 @@ export interface CloudSyncDeps {
 	log: (message: string) => void;
 }
 
-interface PublicTot {
+interface PublicPala {
 	id: string;
 	title: string;
 	file: string;
@@ -167,7 +167,7 @@ interface PublicTot {
 }
 
 interface PublicManifest {
-	tots: PublicTot[];
+	tots: PublicPala[];
 	count: number;
 	generatedAt: string;
 }
@@ -281,6 +281,33 @@ async function download(url: string, deps: CloudSyncDeps): Promise<DownloadedObj
 	};
 }
 
+/**
+ * Read the cloud manifest (same auth as the sync) and return it, or null if
+ * the endpoint is not configured or the manifest can't be reached. Used by
+ * the local dashboard to look up working cloud mirror URLs when the local
+ * source file is missing.
+ */
+export async function fetchCloudManifest(
+	deps: Partial<CloudSyncDeps> = {},
+): Promise<PublicPala[] | null> {
+	const fetchFn = deps.fetch ?? fetch;
+	const settings = loadCloudSyncSettings();
+	if (!settings) return null;
+	const token = cloudSyncToken(settings.endpoint);
+	if (!token) return null;
+	const access = cloudAccessCredentials(settings.endpoint);
+	try {
+		const response = await fetchFn(`${settings.endpoint}/api/sync/manifest`, {
+			headers: syncRequestHeaders(token, access ?? undefined),
+		});
+		if (!response.ok) return null;
+		const value = await response.json();
+		return isPublicManifest(value) ? value.tots : null;
+	} catch {
+		return null;
+	}
+}
+
 async function uploadObject(
 	endpoint: string,
 	token: string,
@@ -307,7 +334,7 @@ async function uploadObject(
 	return true;
 }
 
-async function syncOneTot(
+async function syncOnePala(
 	file: string,
 	entry: RegistryEntry,
 	endpoint: string,
@@ -316,7 +343,7 @@ async function syncOneTot(
 	syncedAt: string,
 	deps: CloudSyncDeps,
 	options: { localOnly?: boolean } = {},
-): Promise<{ tot: PublicTot; objectsUploaded: number }> {
+): Promise<{ pala: PublicPala; objectsUploaded: number }> {
 	const docPath = safeWorkspacePath(entry.docPath);
 	const assetPaths = Object.keys(entry.assets ?? {})
 		.map(safeWorkspacePath)
@@ -416,13 +443,13 @@ async function syncOneTot(
 
 	const mirrorPath = `/mirror/${encodeURIComponent(entry.slug)}/${contentHash}/${encodedPath(docPath)}`;
 	return {
-		tot: {
+		pala: {
 			id: entry.slug,
 			title:
 				entry.displayTitle ||
 				documentTitle ||
 				dashboardTitleFromFile(file, docPath) ||
-				"Untitled Tot",
+				"Untitled Pala",
 			file: path.basename(file),
 			// Same-origin path, not `${endpoint}${mirrorPath}`: the dashboard iframes
 			// this under whatever host serves it (workers.dev or the palapala.me
@@ -473,10 +500,10 @@ export async function syncCloudDashboard(
 	}
 	const previousValue: unknown = await previousResponse.json();
 	const previous = isPublicManifest(previousValue) ? previousValue : null;
-	const previousById = new Map<string, PublicTot>(
-		(previous?.tots ?? []).map((tot) => [tot.id, tot]),
+	const previousById = new Map<string, PublicPala>(
+		(previous?.tots ?? []).map((pala) => [pala.id, pala]),
 	);
-	const results: Array<{ tot: PublicTot; objectsUploaded: number } | null> = new Array(
+	const results: Array<{ pala: PublicPala; objectsUploaded: number } | null> = new Array(
 		entries.length,
 	);
 	const skipped: string[] = [];
@@ -489,7 +516,7 @@ export async function syncCloudDashboard(
 		const [file, entry] = pair;
 		deps.log(`syncing ${index + 1}/${entries.length}  ${entry.slug}`);
 		try {
-			results[index] = await syncOneTot(
+			results[index] = await syncOnePala(
 				file,
 				entry,
 				endpoint,
@@ -517,32 +544,32 @@ export async function syncCloudDashboard(
 	}
 
 	await Promise.all(Array.from({ length: Math.min(4, Math.max(entries.length, 1)) }, worker));
-	let tots = results
-		.filter((r): r is { tot: PublicTot; objectsUploaded: number } => r !== null)
-		.map((r) => r.tot)
+	let palas = results
+		.filter((r): r is { pala: PublicPala; objectsUploaded: number } => r !== null)
+		.map((r) => r.pala)
 		.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 	if (previous) {
-		const previousById = new Map(previous.tots.map((tot) => [tot.id, tot]));
-		tots = tots.map((tot) => {
-			const previousTot = previousById.get(tot.id);
-			if (!previousTot || previousTot.contentHash !== tot.contentHash) return tot;
-			const candidate = { ...tot, syncedAt: previousTot.syncedAt };
-			return JSON.stringify(candidate) === JSON.stringify(previousTot) ? candidate : tot;
+		const previousById = new Map(previous.tots.map((pala) => [pala.id, pala]));
+		palas = palas.map((pala) => {
+			const previousPala = previousById.get(pala.id);
+			if (!previousPala || previousPala.contentHash !== pala.contentHash) return pala;
+			const candidate = { ...pala, syncedAt: previousPala.syncedAt };
+			return JSON.stringify(candidate) === JSON.stringify(previousPala) ? candidate : pala;
 		});
 	}
 	const objectsUploaded = results
-		.filter((r): r is { tot: PublicTot; objectsUploaded: number } => r !== null)
+		.filter((r): r is { pala: PublicPala; objectsUploaded: number } => r !== null)
 		.reduce((sum, result) => sum + result.objectsUploaded, 0);
-	if (previous && JSON.stringify(previous.tots) === JSON.stringify(tots)) {
+	if (previous && JSON.stringify(previous.tots) === JSON.stringify(palas)) {
 		return {
-			count: tots.length,
+			count: palas.length,
 			objectsUploaded,
 			manifestUpdated: false,
 			manifestUrl: `${endpoint}/api/tots`,
 			skipped,
 		};
 	}
-	const manifest = { tots, count: tots.length, generatedAt };
+	const manifest = { tots: palas, count: palas.length, generatedAt };
 	const manifestBody = JSON.stringify(manifest);
 	const manifestResponse = await deps.fetch(`${endpoint}/api/sync/manifest`, {
 		method: "PUT",
@@ -557,7 +584,7 @@ export async function syncCloudDashboard(
 	}
 
 	return {
-		count: tots.length,
+		count: palas.length,
 		objectsUploaded,
 		manifestUpdated: true,
 		manifestUrl: `${endpoint}/api/tots`,
@@ -575,8 +602,8 @@ function buildMetadataOnlyEntry(
 	file: string,
 	entry: RegistryEntry,
 	syncedAt: string,
-	previousById: Map<string, PublicTot>,
-): { tot: PublicTot; objectsUploaded: number } | null {
+	previousById: Map<string, PublicPala>,
+): { pala: PublicPala; objectsUploaded: number } | null {
 	const previous = previousById.get(entry.slug);
 	if (!previous) return null;
 	const docPath = safeWorkspacePath(entry.docPath);
@@ -585,7 +612,7 @@ function buildMetadataOnlyEntry(
 		.sort();
 	const displayTitle = entry.displayTitle ?? previous.title;
 	const projects = normalizeProjects(entry.projects ?? []);
-	const tot: PublicTot = {
+	const pala: PublicPala = {
 		...previous,
 		title: displayTitle,
 		file: path.basename(file),
@@ -603,7 +630,7 @@ function buildMetadataOnlyEntry(
 		syncedAt,
 		projects,
 	};
-	return { tot, objectsUploaded: 0 };
+	return { pala, objectsUploaded: 0 };
 }
 
 export function loadCloudSyncSettings(file = SETTINGS_FILE): CloudSyncSettings | null {
@@ -685,59 +712,59 @@ export function saveCloudSyncToken(endpoint: string, token: string): void {
 	}
 }
 
-function isPublicTot(value: unknown): value is PublicTot {
+function isPublicPala(value: unknown): value is PublicPala {
 	if (typeof value !== "object" || value === null) return false;
-	const tot = value as Partial<PublicTot>;
+	const pala = value as Partial<PublicPala>;
 	return (
-		typeof tot.id === "string" &&
-		typeof tot.title === "string" &&
-		typeof tot.file === "string" &&
-		typeof tot.url === "string" &&
-		typeof tot.originalUrl === "string" &&
-		typeof tot.slug === "string" &&
-		tot.id === tot.slug &&
-		SLUG_PATTERN.test(tot.slug) &&
-		(tot.kind === "html" || tot.kind === "markdown") &&
-		typeof tot.contentHash === "string" &&
-		HASH_PATTERN.test(tot.contentHash) &&
-		typeof tot.docSha256 === "string" &&
-		HASH_PATTERN.test(tot.docSha256) &&
-		typeof tot.docPath === "string" &&
-		isSafeWorkspacePath(tot.docPath) &&
-		typeof tot.docContentType === "string" &&
-		tot.docContentType.length > 0 &&
-		typeof tot.bytes === "number" &&
-		Number.isFinite(tot.bytes) &&
-		tot.bytes >= 0 &&
-		typeof tot.createdAt === "string" &&
-		isIsoTimestamp(tot.createdAt) &&
-		typeof tot.assetCount === "number" &&
-		Array.isArray(tot.assetPaths) &&
-		tot.assetCount === tot.assetPaths.length &&
-		tot.assetPaths.every(
+		typeof pala.id === "string" &&
+		typeof pala.title === "string" &&
+		typeof pala.file === "string" &&
+		typeof pala.url === "string" &&
+		typeof pala.originalUrl === "string" &&
+		typeof pala.slug === "string" &&
+		pala.id === pala.slug &&
+		SLUG_PATTERN.test(pala.slug) &&
+		(pala.kind === "html" || pala.kind === "markdown") &&
+		typeof pala.contentHash === "string" &&
+		HASH_PATTERN.test(pala.contentHash) &&
+		typeof pala.docSha256 === "string" &&
+		HASH_PATTERN.test(pala.docSha256) &&
+		typeof pala.docPath === "string" &&
+		isSafeWorkspacePath(pala.docPath) &&
+		typeof pala.docContentType === "string" &&
+		pala.docContentType.length > 0 &&
+		typeof pala.bytes === "number" &&
+		Number.isFinite(pala.bytes) &&
+		pala.bytes >= 0 &&
+		typeof pala.createdAt === "string" &&
+		isIsoTimestamp(pala.createdAt) &&
+		typeof pala.assetCount === "number" &&
+		Array.isArray(pala.assetPaths) &&
+		pala.assetCount === pala.assetPaths.length &&
+		pala.assetPaths.every(
 			(assetPath) => typeof assetPath === "string" && isSafeWorkspacePath(assetPath),
 		) &&
-		typeof tot.assetHashes === "object" &&
-		tot.assetHashes !== null &&
-		!Array.isArray(tot.assetHashes) &&
-		Object.keys(tot.assetHashes).length === tot.assetPaths.length &&
-		tot.assetPaths.every((assetPath) => HASH_PATTERN.test(tot.assetHashes![assetPath] ?? "")) &&
-		typeof tot.assetContentTypes === "object" &&
-		tot.assetContentTypes !== null &&
-		!Array.isArray(tot.assetContentTypes) &&
-		Object.keys(tot.assetContentTypes).length === tot.assetPaths.length &&
-		tot.assetPaths.every(
+		typeof pala.assetHashes === "object" &&
+		pala.assetHashes !== null &&
+		!Array.isArray(pala.assetHashes) &&
+		Object.keys(pala.assetHashes).length === pala.assetPaths.length &&
+		pala.assetPaths.every((assetPath) => HASH_PATTERN.test(pala.assetHashes![assetPath] ?? "")) &&
+		typeof pala.assetContentTypes === "object" &&
+		pala.assetContentTypes !== null &&
+		!Array.isArray(pala.assetContentTypes) &&
+		Object.keys(pala.assetContentTypes).length === pala.assetPaths.length &&
+		pala.assetPaths.every(
 			(assetPath) =>
-				typeof tot.assetContentTypes![assetPath] === "string" &&
-				tot.assetContentTypes![assetPath]!.length > 0,
+				typeof pala.assetContentTypes![assetPath] === "string" &&
+				pala.assetContentTypes![assetPath]!.length > 0,
 		) &&
-		typeof tot.syncedAt === "string" &&
-		isIsoTimestamp(tot.syncedAt) &&
+		typeof pala.syncedAt === "string" &&
+		isIsoTimestamp(pala.syncedAt) &&
 		// Optional for backward compatibility with pre-projects manifests;
 		// readers treat a missing field as [].
-		(tot.projects === undefined ||
-			(Array.isArray(tot.projects) &&
-				tot.projects.every((slug) => typeof slug === "string" && isProjectSlug(slug))))
+		(pala.projects === undefined ||
+			(Array.isArray(pala.projects) &&
+				pala.projects.every((slug) => typeof slug === "string" && isProjectSlug(slug))))
 	);
 }
 
@@ -762,7 +789,7 @@ function isPublicManifest(value: unknown): value is PublicManifest {
 	const manifest = value as Partial<PublicManifest>;
 	return (
 		Array.isArray(manifest.tots) &&
-		manifest.tots.every(isPublicTot) &&
+		manifest.tots.every(isPublicPala) &&
 		manifest.count === manifest.tots.length &&
 		typeof manifest.generatedAt === "string" &&
 		isIsoTimestamp(manifest.generatedAt)
@@ -818,20 +845,20 @@ async function limitedResponseBytes(
 }
 
 function manifestObjects(manifest: PublicManifest) {
-	return manifest.tots.flatMap((tot, index) => [
+	return manifest.tots.flatMap((pala, index) => [
 		{
 			index,
-			objectPath: tot.docPath,
-			expectedHash: tot.docSha256,
-			contentType: tot.docContentType,
-			tot,
+			objectPath: pala.docPath,
+			expectedHash: pala.docSha256,
+			contentType: pala.docContentType,
+			pala,
 		},
-		...tot.assetPaths.map((objectPath) => ({
+		...pala.assetPaths.map((objectPath) => ({
 			index,
 			objectPath,
-			expectedHash: tot.assetHashes[objectPath]!,
-			contentType: tot.assetContentTypes[objectPath]!,
-			tot,
+			expectedHash: pala.assetHashes[objectPath]!,
+			contentType: pala.assetContentTypes[objectPath]!,
+			pala,
 		})),
 	]);
 }
@@ -874,7 +901,7 @@ export async function backupCloudDashboard(
 		const object = objects[cursor++];
 		if (!object) return;
 		const safePath = safeWorkspacePath(object.objectPath);
-		const relativeKey = `tots/${object.tot.slug}/${object.tot.contentHash}/${safePath}`;
+		const relativeKey = `tots/${object.pala.slug}/${object.pala.contentHash}/${safePath}`;
 		const output = safeBackupPath(root, relativeKey);
 		const existingIsValid =
 			fs.existsSync(output) &&
@@ -949,7 +976,7 @@ export async function restoreCloudDashboard(
 	async function restoreWorker(): Promise<void> {
 		const object = objects[cursor++];
 		if (!object) return;
-		const relativeKey = `tots/${object.tot.slug}/${object.tot.contentHash}/${object.objectPath}`;
+		const relativeKey = `tots/${object.pala.slug}/${object.pala.contentHash}/${object.objectPath}`;
 		const input = safeBackupPath(root, relativeKey);
 		if (!fs.existsSync(input) || fs.statSync(input).size > MAX_DOWNLOAD_BYTES) {
 			throw new Error(`backup object is missing or too large: ${relativeKey}`);
@@ -982,11 +1009,11 @@ export async function restoreCloudDashboard(
 
 	const restoredManifest: PublicManifest = {
 		...manifest,
-		tots: manifest.tots.map((tot) => ({
-			...tot,
+		tots: manifest.tots.map((pala) => ({
+			...pala,
 			// Same-origin path (see the sync builder): the dashboard frames this and
 			// its CSP frame-src is 'self', so an absolute cross-origin URL is blocked.
-			url: `/mirror/${encodeURIComponent(tot.slug)}/${tot.contentHash}/${encodedPath(tot.docPath)}`,
+			url: `/mirror/${encodeURIComponent(pala.slug)}/${pala.contentHash}/${encodedPath(pala.docPath)}`,
 		})),
 		generatedAt: deps.now().toISOString(),
 	};

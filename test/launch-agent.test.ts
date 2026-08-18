@@ -14,9 +14,12 @@ describe("dashboard LaunchAgents", () => {
 		});
 		expect(definitions[0]?.plist).toContain("<key>KeepAlive</key>");
 		expect(definitions[0]?.plist).toContain("<string>--no-open</string>");
-		expect(definitions[1]?.plist).toContain("<key>StartInterval</key>");
-		expect(definitions[1]?.plist).toContain("<integer>300</integer>");
+		// Sync daemon is now a KeepAlive watcher (debounced on ~/.tot changes),
+		// not a StartInterval cron tick — see commit 370eccc.
+		expect(definitions[1]?.plist).toContain("<key>KeepAlive</key>");
 		expect(definitions[1]?.plist).toContain("<string>sync</string>");
+		expect(definitions[1]?.plist).toContain("<string>--watch</string>");
+		expect(definitions[1]?.plist).toContain("<string>--local-only</string>");
 		expect(definitions[1]?.plist).toContain("<string>--quiet</string>");
 	});
 

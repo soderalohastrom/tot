@@ -76,7 +76,7 @@ export function launchAgentDefinitions(
 			plist: plist(
 				DASHBOARD_LABEL,
 				[totExecutable, "dashboard", "--no-open"],
-				path.join(logs, "tot-dashboard.log"),
+				path.join(logs, "pala-dashboard.log"),
 				{ keepAlive: true },
 			),
 		},
@@ -89,7 +89,7 @@ export function launchAgentDefinitions(
 			plist: plist(
 				SYNC_LABEL,
 				[totExecutable, "dashboard", "sync", "--watch", "--local-only", "--quiet"],
-				path.join(logs, "tot-dashboard-sync.log"),
+				path.join(logs, "pala-dashboard-sync.log"),
 				{ keepAlive: true },
 			),
 		},
@@ -104,11 +104,13 @@ function launchctl(arguments_: string[], allowFailure = false): void {
 }
 
 function findTotExecutable(): string {
-	const result = spawnSync("which", ["tot"], { encoding: "utf8" });
-	if (result.status !== 0 || !result.stdout.trim()) {
-		throw new Error("could not find tot on PATH");
+	// Prefer `pala`, fall back to the `tot` alias for one minor so users
+	// upgrading from a pre-rebrand install don't have to re-run install-agent.
+	for (const candidate of ["pala", "tot"]) {
+		const result = spawnSync("which", [candidate], { encoding: "utf8" });
+		if (result.status === 0 && result.stdout.trim()) return result.stdout.trim();
 	}
-	return result.stdout.trim();
+	throw new Error("could not find pala (or tot) on PATH");
 }
 
 export function installDashboardLaunchAgents(

@@ -24,7 +24,7 @@ export interface RegistryEntry {
 	displayTitle?: string;
 	/** Hidden entries remain published and registered but are omitted from dashboards. */
 	hidden?: boolean;
-	/** Project slugs this Tot appears under in scoped client reading rooms.
+	/** Project slugs this Pala appears under in scoped client reading rooms.
 	 *  Dashboard metadata only — does not affect the published document. */
 	projects?: string[];
 }

@@ -4,8 +4,8 @@
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 		<meta name="color-scheme" content="light dark" />
-		<meta name="description" content="A local visual index of pages published with tot." />
-		<title>Tot Dashboard</title>
+		<meta name="description" content="A local visual index of pages published with pala." />
+		<title>Pala Dashboard</title>
 		<link rel="stylesheet" href="/app.css" />
 		<script type="module" src="/app.js"></script>
 	</head>
@@ -13,10 +13,10 @@
 		<div class="grain" aria-hidden="true"></div>
 		<header class="masthead">
 			<div class="brand-lockup">
-				<div class="brand-mark" aria-hidden="true"><span>t</span></div>
+				<div class="brand-mark" aria-hidden="true"><svg viewBox="-50 -50 100 100"><g fill="currentColor"><path d="M0,-8 C -10,-22 -10,-35 0,-38 C 10,-35 10,-22 0,-8 Z" /><path d="M0,-8 C -10,-22 -10,-35 0,-38 C 10,-35 10,-22 0,-8 Z" transform="rotate(72)" /><path d="M0,-8 C -10,-22 -10,-35 0,-38 C 10,-35 10,-22 0,-8 Z" transform="rotate(144)" /><path d="M0,-8 C -10,-22 -10,-35 0,-38 C 10,-35 10,-22 0,-8 Z" transform="rotate(216)" /><path d="M0,-8 C -10,-22 -10,-35 0,-38 C 10,-35 10,-22 0,-8 Z" transform="rotate(288)" /><circle r="6" fill="#fffaf0" /></g></svg></div>
 				<div>
 					<p class="eyebrow">Personal publishing archive</p>
-					<h1>Tot <em>Index</em></h1>
+					<h1>Pala <em>Index</em></h1>
 				</div>
 			</div>
 			<div class="masthead-meta">
@@ -94,7 +94,7 @@
 						<p id="result-count" class="result-count">— pages</p>
 					</div>
 				</div>
-				<div id="tot-grid" class="tot-grid" aria-live="polite"></div>
+				<div id="pala-grid" class="pala-grid" aria-live="polite"></div>
 			</section>
 
 			<button
@@ -110,11 +110,11 @@
 				<span aria-hidden="true"></span>
 			</button>
 
-			<aside id="reader" class="reader" aria-label="Tot reader">
+			<aside id="reader" class="reader" aria-label="Pala reader">
 				<div class="reader-empty">
 					<p class="section-number">02 / Reader</p>
 					<div class="reader-glyph" aria-hidden="true">↗</div>
-					<h2>Select a tot<br />to read it here.</h2>
+					<h2>Select a pala<br />to read it here.</h2>
 					<p>
 						Choose any card or list row. The living page will open in this panel without
 						leaving your index.
@@ -125,7 +125,7 @@
 					<div class="reader-glyph" aria-hidden="true">·</div>
 					<h2>Local source missing</h2>
 					<p>
-						The source file for this Tot is no longer at the recorded path. Re-publish it
+						The source file for this Pala is no longer at the recorded path. Re-publish it
 						from the original file (or any HTML/Markdown source) and the reader will come
 						back. The Open ↗ link still works if the upstream page is reachable.
 					</p>
@@ -160,7 +160,7 @@
 					<div class="reader-frame-shell">
 						<iframe
 							id="reader-frame"
-							title="Selected Tot"
+							title="Selected Pala"
 							sandbox="allow-scripts allow-forms allow-popups allow-modals allow-downloads"
 						></iframe>
 					</div>
@@ -173,7 +173,7 @@
 				<span>∅</span>
 				<h3>No pages found</h3>
 				<p>
-					Try a broader search, or publish a new page with <code>tot &lt;file&gt;</code>.
+					Try a broader search, or publish a new page with <code>pala &lt;file&gt;</code>.
 				</p>
 			</div>
 		</template>
@@ -181,20 +181,20 @@
 		<dialog id="delete-dialog" class="delete-dialog">
 			<form method="dialog">
 				<p class="section-number">Dashboard housekeeping</p>
-				<h2>What should happen to this Tot?</h2>
+				<h2>What should happen to this Pala?</h2>
 				<p id="delete-description" class="dialog-description"></p>
 				<div class="dialog-choice">
 					<div>
 						<strong>Hide from dashboard</strong>
 						<span
-							>Keeps the published Tot alive and recoverable from “Show hidden.”</span
+							>Keeps the published Pala alive and recoverable from “Show hidden.”</span
 						>
 					</div>
 					<button id="hide-confirm" type="button">Hide</button>
 				</div>
 				<div class="dialog-choice danger-choice">
 					<div>
-						<strong>Delete published Tot</strong>
+						<strong>Delete published Pala</strong>
 						<span
 							>Removes the original page and its registry entry. This cannot be
 							undone.</span

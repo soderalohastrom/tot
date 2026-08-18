@@ -1,5 +1,5 @@
 /**
- * Project slugs tag a Tot into scoped client reading rooms (`/<project>` on the
+ * Project slugs tag a Pala into scoped client reading rooms (`/<project>` on the
  * dashboard host). The CLI, the loopback patch handler, and the manifest builder
  * all normalize through here; the Worker mirrors PROJECT_SLUG_PATTERN as a
  * constant (it does not import from src/).

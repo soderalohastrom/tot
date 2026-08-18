@@ -2,7 +2,7 @@ import { request as httpRequest, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createDashboardHandler, dashboardTots, startDashboard } from "../src/dashboard.js";
+import { createDashboardHandler, dashboardPalas, startDashboard } from "../src/dashboard.js";
 import type { RegistryEntry } from "../src/config.js";
 
 function entry(overrides: Partial<RegistryEntry> = {}): RegistryEntry {
@@ -31,7 +31,7 @@ afterEach(async () => {
 
 describe("dashboard registry projection", () => {
 	it("sorts newest first, derives titles, and omits private API identifiers", () => {
-		const tots = dashboardTots({
+		const palas = dashboardPalas({
 			"/tmp/older-report.html": entry({
 				slug: "older",
 				createdAt: "2026-07-11T18:00:00.000Z",
@@ -42,29 +42,29 @@ describe("dashboard registry projection", () => {
 			}),
 		});
 
-		expect(tots.map((tot) => tot.id)).toEqual(["newer", "older"]);
-		expect(tots[0]?.title).toBe("Mise Recap");
-		expect(tots[1]?.title).toBe("Older Report");
-		expect(JSON.stringify(tots)).not.toContain("private-workspace-id");
-		expect(JSON.stringify(tots)).not.toContain("private-document-id");
+		expect(palas.map((pala) => pala.id)).toEqual(["newer", "older"]);
+		expect(palas[0]?.title).toBe("Mise Recap");
+		expect(palas[1]?.title).toBe("Older Report");
+		expect(JSON.stringify(palas)).not.toContain("private-workspace-id");
+		expect(JSON.stringify(palas)).not.toContain("private-document-id");
 	});
 
 	it("projects custom display names and hidden state", () => {
-		const tots = dashboardTots({
+		const palas = dashboardPalas({
 			"/tmp/report.html": entry({ displayTitle: "Quarterly Field Notes", hidden: true }),
 		});
 
-		expect(tots[0]).toMatchObject({ title: "Quarterly Field Notes", hidden: true });
+		expect(palas[0]).toMatchObject({ title: "Quarterly Field Notes", hidden: true });
 	});
 
 	it("exposes project tags (empty array when untagged) for the tagging UI", () => {
-		const tots = dashboardTots({
+		const palas = dashboardPalas({
 			"/tmp/tagged.html": entry({ slug: "tag1", projects: ["mise", "gohappy"] }),
 			"/tmp/untagged.html": entry({ slug: "tag2", createdAt: "2026-07-11T18:00:00.000Z" }),
 		});
 
-		expect(tots.find((tot) => tot.slug === "tag1")?.projects).toEqual(["mise", "gohappy"]);
-		expect(tots.find((tot) => tot.slug === "tag2")?.projects).toEqual([]);
+		expect(palas.find((pala) => pala.slug === "tag1")?.projects).toEqual(["mise", "gohappy"]);
+		expect(palas.find((pala) => pala.slug === "tag2")?.projects).toEqual([]);
 	});
 });
 
@@ -103,11 +103,11 @@ describe("dashboard server", () => {
 		expect(page.status).toBe(200);
 		const pageText = await page.text();
 		const appText = await app.text();
-		expect(pageText).toContain("Tot <em>Index</em>");
+		expect(pageText).toContain("Pala <em>Index</em>");
 		expect(pageText).toContain('id="reader-resizer"');
 		expect(pageText).toContain('role="separator"');
-		expect(appText).toContain('"x-tot-dashboard-token"');
-		expect(appText).toContain("tot-dashboard-reader-width");
+		expect(appText).toContain('"x-pala-dashboard-token"');
+		expect(appText).toContain("pala-dashboard-reader-width");
 		expect(appText).toContain('addEventListener("pointerdown"');
 		expect(layout.status).toBe(200);
 		expect(page.headers.get("content-security-policy")).toContain("frame-src https:");
@@ -189,7 +189,7 @@ describe("dashboard server", () => {
 
 		const headers = {
 			"content-type": "application/json",
-			"x-tot-dashboard-token": payload.capabilities.token,
+			"x-pala-dashboard-token": payload.capabilities.token,
 		};
 		for (const patch of [{ title: "A clearer name" }, { hidden: true }, { hidden: false }]) {
 			// oxlint-disable-next-line no-await-in-loop -- preserve mutation ordering in this API test.
@@ -208,7 +208,7 @@ describe("dashboard server", () => {
 
 		const removed = await fetch(`${instance.url}/api/tots/abc123`, {
 			method: "DELETE",
-			headers: { "x-tot-dashboard-token": payload.capabilities.token },
+			headers: { "x-pala-dashboard-token": payload.capabilities.token },
 		});
 		expect(removed.status).toBe(200);
 		expect(removals).toEqual(["abc123"]);
@@ -235,7 +235,7 @@ describe("dashboard server", () => {
 		const payload = (await api.json()) as { capabilities: { token: string } };
 		const headers = {
 			"content-type": "application/json",
-			"x-tot-dashboard-token": payload.capabilities.token,
+			"x-pala-dashboard-token": payload.capabilities.token,
 		};
 		const patch = (body: unknown) =>
 			fetch(`${instance.url}/api/tots/abc123`, {

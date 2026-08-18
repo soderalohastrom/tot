@@ -178,7 +178,7 @@ describe("cloud dashboard Worker", () => {
 	});
 });
 
-function manifestTot(slug: string, projects?: string[]) {
+function manifestPala(slug: string, projects?: string[]) {
 	return {
 		id: slug,
 		title: slug,
@@ -206,9 +206,9 @@ describe("scoped client reading rooms", () => {
 	function seededBucket(): MemoryR2 {
 		const bucket = new MemoryR2();
 		const tots = [
-			manifestTot("alpha", ["canlis"]),
-			manifestTot("beta", ["canlis", "gohappy"]),
-			manifestTot("gamma"),
+			manifestPala("alpha", ["canlis"]),
+			manifestPala("beta", ["canlis", "gohappy"]),
+			manifestPala("gamma"),
 		];
 		// No `hidden` case here by construction: hidden entries never reach the
 		// stored manifest — sync excludes them before upload.
@@ -234,7 +234,7 @@ describe("scoped client reading rooms", () => {
 		};
 		// gamma (untagged) must be absent from the raw payload — the filter is
 		// server-side, not client-side hiding.
-		expect(body.tots.map((tot) => tot.slug)).toEqual(["alpha", "beta"]);
+		expect(body.tots.map((pala) => pala.slug)).toEqual(["alpha", "beta"]);
 		expect(body.count).toBe(2);
 		expect(body.capabilities.manage).toBe(false);
 	});
@@ -277,7 +277,7 @@ describe("scoped client reading rooms", () => {
 			capabilities: { manage: boolean };
 		};
 		// Untagged Tots included: the owner room matches everything, not a project.
-		expect(body.tots.map((tot) => tot.slug)).toEqual(["alpha", "beta", "gamma"]);
+		expect(body.tots.map((pala) => pala.slug)).toEqual(["alpha", "beta", "gamma"]);
 		expect(body.count).toBe(3);
 		// Still read-only — management stays loopback-only.
 		expect(body.capabilities.manage).toBe(false);

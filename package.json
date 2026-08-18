@@ -18,7 +18,8 @@
 		"url": "git+https://github.com/plannotator/tot.git"
 	},
 	"bin": {
-		"tot": "dist/cli.js"
+		"pala": "dist/cli.js",
+		"tot": "dist/tot-shim.js"
 	},
 	"files": [
 		"dist",
