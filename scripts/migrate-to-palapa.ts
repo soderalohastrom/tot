@@ -173,6 +173,25 @@ async function liveReadCheck(endpoint: string, slug: string, docPath: string): P
 	return { status: resp.status, ms: Date.now() - t0, bytes: text.length };
 }
 
+// A Custom Domain that just provisioned has a cert gap — HTTPS
+// can return 525/526 for a few seconds to a few minutes while
+// Cloudflare provisions the edge cert. Live-read smoke test
+// retries 5xx with a short backoff before declaring a failure,
+// so the migration run isn't poisoned by the cert gap.
+async function liveReadRetry(endpoint: string, slug: string, docPath: string, attempts = 4, delayMs = 2500): Promise<{ status: number; ms: number; bytes: number; retried: boolean }> {
+	for (let i = 0; i < attempts; i++) {
+		const r = await liveReadCheck(endpoint, slug, docPath);
+		if (r.status >= 200 && r.status < 400) {
+			return { ...r, retried: i > 0 };
+		}
+		if (r.status < 500 || i === attempts - 1) {
+			return { ...r, retried: i > 0 };
+		}
+		await new Promise((resolve) => setTimeout(resolve, delayMs));
+	}
+	return { ...(await liveReadCheck(endpoint, slug, docPath)), retried: true };
+}
+
 interface MigrationResult {
 	total: number;
 	migrated: number;
@@ -276,9 +295,9 @@ async function migrate(): Promise<MigrationResult> {
 		if (sample.length > 0) {
 			console.log(`\nSmoke test: reading ${sample.length} migrated slugs via ${ENDPOINT}:`);
 			for (const s of sample) {
-				const r = await liveReadCheck(ENDPOINT, s.slug, s.docPath);
+				const r = await liveReadRetry(ENDPOINT, s.slug, s.docPath);
 				const tag = r.status === 200 ? "OK" : r.status;
-				console.log(`  ${tag}  ${s.slug}/${s.docPath}  (${r.ms}ms, ${r.bytes} bytes)`);
+				console.log(`  ${tag}  ${s.slug}/${s.docPath}  (${r.ms}ms, ${r.bytes} bytes${r.retried ? ", retried" : ""})`);
 			}
 		}
 	}

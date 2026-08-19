@@ -20,6 +20,13 @@
 		"WORKER_VERSION": "0.1.0"
 	},
 
+	"routes": [
+		{
+			"pattern": "docs.palapala.me",
+			"custom_domain": true
+		}
+	],
+
 	"r2_buckets": [
 		{
 			"binding": "R2",
