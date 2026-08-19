@@ -145,6 +145,18 @@ function isDryRun(): boolean {
 	return process.env.DRY_RUN === "1" || process.argv.includes("--dry-run");
 }
 
+function isAutoSkipMissing(): boolean {
+	// Default-on: the source files for older TOTs often live
+	// on machines we no longer have (cleaned /tmp, retired
+	// worktrees). The slug is durable identity; the source is
+	// not. Don't fail the whole migration over missing
+	// source — just report which ones are skipped and let
+	// the user re-publish from a fresh source if needed.
+	// Override with --no-skip-missing to require all present.
+	if (process.argv.includes("--no-skip-missing")) return false;
+	return process.env.SKIP_MISSING !== "0";
+}
+
 async function workerHealthCheck(endpoint: string): Promise<{ alive: boolean; ms: number; err?: string }> {
 	const t0 = Date.now();
 	try {
@@ -235,13 +247,24 @@ async function migrate(): Promise<MigrationResult> {
 		console.log(`  health: /v1/me OK (${health.ms}ms)`);
 	}
 
-	for (const [, doc] of docs) {
-		const localFile = findLocalTotFile(doc.file);
+	for (const [key, doc] of docs) {
+		// The registry's `key` is the canonical source path; fall
+		// back to `doc.file` for older entries that did record it.
+		const sourcePath = doc.file ?? key;
+		const localFile = findLocalTotFile(sourcePath);
 		if (!localFile) {
+			if (isAutoSkipMissing()) {
+				result.failures.push({
+					slug: doc.slug,
+					docPath: doc.docPath,
+					error: `skipped (no local source): ${sourcePath}`,
+				});
+				continue;
+			}
 			result.failures.push({
 				slug: doc.slug,
 				docPath: doc.docPath,
-				error: `local file not found: ${doc.file}`,
+				error: `local file not found: ${sourcePath}`,
 			});
 			continue;
 		}
