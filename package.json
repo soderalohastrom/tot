@@ -42,6 +42,8 @@
 		"cloud:types": "wrangler types worker-configuration.d.ts --strict-vars false",
 		"dashboard": "pnpm build && node dist/cli.js dashboard",
 		"verify:contract": "node scripts/verify-domain-contract.mjs",
+		"migrate:palapa": "tsc -p tsconfig.scripts.json && node --experimental-strip-types scripts/migrate-to-palapa.ts",
+		"migrate:palapa:dry-run": "DRY_RUN=1 tsc -p tsconfig.scripts.json && node --experimental-strip-types scripts/migrate-to-palapa.ts",
 		"lint": "oxlint",
 		"lint:fix": "oxlint --fix",
 		"format": "oxfmt --write .",
