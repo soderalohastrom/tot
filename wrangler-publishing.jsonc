@@ -1,0 +1,41 @@
+{
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"name": "palapala-publisher",
+	"main": "./worker-publishing/src/index.ts",
+	"workers_dev": true,
+	"preview_urls": false,
+	"compatibility_date": "2026-07-12",
+	"compatibility_flags": ["nodejs_compat"],
+
+	"observability": {
+		"enabled": true,
+		"logs": {
+			"enabled": true,
+			"head_sampling_rate": 1
+		}
+	},
+
+	"vars": {
+		"WORKER_NAME": "palapala-publisher",
+		"WORKER_VERSION": "0.1.0"
+	},
+
+	"r2_buckets": [
+		{
+			"binding": "R2",
+			"bucket_name": "palapala-pages"
+		}
+	],
+
+	"d1_databases": [
+		{
+			"binding": "D1",
+			"database_name": "palapala-registry",
+			"database_id": "TBD_AFTER_FIRST_DEPLOY"
+		}
+	],
+
+	"secrets": {
+		"required": []
+	}
+}
