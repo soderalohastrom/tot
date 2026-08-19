@@ -271,13 +271,17 @@ async function migrate(): Promise<MigrationResult> {
 		const bodyText = readFileSync(localFile, "utf-8");
 		const bytes = Buffer.byteLength(bodyText, "utf-8");
 		const sha = sha256Hex(bodyText);
-		if (sha !== doc.contentHash && sha !== doc.docSha256) {
+		const manifestHash = doc.docSha256 ?? doc.contentHash;
+		if (manifestHash && sha !== manifestHash) {
 			result.failures.push({
 				slug: doc.slug,
 				docPath: doc.docPath,
-				error: `hash mismatch: disk=${sha.slice(0, 12)} manifest=${(doc.docSha256 ?? doc.contentHash ?? "").slice(0, 12)}`,
+				error: `hash mismatch: disk=${sha.slice(0, 12)} manifest=${(manifestHash ?? "").slice(0, 12)}`,
 			});
 			continue;
+		}
+		if (!manifestHash) {
+			console.warn(`  warn: ${doc.slug}/${doc.docPath} has no manifest hash, proceeding on disk-sha only (worker re-verifies)`);
 		}
 		if (DRY) {
 			console.log(`  DRY: ${doc.slug}/${doc.docPath} (${bytes} bytes, sha=${sha.slice(0, 12)})`);

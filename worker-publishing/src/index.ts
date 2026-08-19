@@ -48,16 +48,20 @@ interface Env {
 	WORKER_VERSION: string;
 }
 
+// D1 returns rows with snake_case column names; the
+// Document interface matches that directly so .first<Document>()
+// works without an ad-hoc mapper. DocumentResponse is the public
+// API contract and uses camelCase.
 interface Document {
 	id: string;
-	workspaceId: string;
+	workspace_id: string;
 	slug: string;
-	docPath: string;
+	doc_path: string;
 	kind: "markdown" | "html";
-	headHash: string;
-	createdAt: string;
-	updatedAt: string;
-	deletedAt: string | null;
+	head_hash: string;
+	created_at: string;
+	updated_at: string;
+	deleted_at: string | null;
 }
 
 interface DocumentResponse {
@@ -141,14 +145,14 @@ async function writeDocumentHead(env: Env, doc: Document): Promise<void> {
 		"INSERT OR REPLACE INTO documents (id, workspace_id, slug, doc_path, kind, head_hash, created_at, updated_at, deleted_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
 	).bind(
 		doc.id,
-		doc.workspaceId,
+		doc.workspace_id,
 		doc.slug,
-		doc.docPath,
+		doc.doc_path,
 		doc.kind,
-		doc.headHash,
-		doc.createdAt,
-		doc.updatedAt,
-		doc.deletedAt,
+		doc.head_hash,
+		doc.created_at,
+		doc.updated_at,
+		doc.deleted_at,
 	).run();
 }
 
@@ -234,14 +238,14 @@ async function handleAdmin(req: Request, env: Env, path: string, _slug: string):
 		const existing = await readDocumentHead(env, slug, "index.html");
 		const doc: Document = {
 			id: existing?.id ?? id,
-			workspaceId: existing?.workspaceId ?? "default",
+			workspace_id: existing?.workspace_id ?? "default",
 			slug,
-			docPath: "index.html",
+			doc_path: "index.html",
 			kind: parsed.kind,
-			headHash: hash,
-			createdAt: existing?.createdAt ?? now,
-			updatedAt: now,
-			deletedAt: null,
+			head_hash: hash,
+			created_at: existing?.created_at ?? now,
+			updated_at: now,
+			deleted_at: null,
 		};
 		await finalizeObject(env, hash, parsed.body, contentType, slug, "index.html");
 		await writeDocumentHead(env, doc);
@@ -249,12 +253,12 @@ async function handleAdmin(req: Request, env: Env, path: string, _slug: string):
 		const response: DocumentResponse = {
 			id: doc.id,
 			slug: doc.slug,
-			docPath: doc.docPath,
-			version: doc.headHash,
-			url: `https://palapala.me/${doc.slug}/${doc.docPath}`,
-			shareUrl: `https://palapala.me/${doc.slug}/${doc.docPath}`,
-			fileUrl: `https://palapala.me/${doc.slug}/${doc.docPath}`,
-			createdAt: doc.createdAt,
+			docPath: doc.doc_path,
+			version: doc.head_hash,
+			url: `https://palapala.me/${doc.slug}/${doc.doc_path}`,
+			shareUrl: `https://palapala.me/${doc.slug}/${doc.doc_path}`,
+			fileUrl: `https://palapala.me/${doc.slug}/${doc.doc_path}`,
+			createdAt: doc.created_at,
 		};
 		return new Response(JSON.stringify({ workspace: { id: "default", slug: doc.slug }, document: response }), {
 			headers: { "content-type": "application/json" },
@@ -357,14 +361,14 @@ async function handleAdmin(req: Request, env: Env, path: string, _slug: string):
 		const existing = await readDocumentHead(env, slug, docPath);
 		const doc: Document = {
 			id: existing?.id ?? id,
-			workspaceId: existing?.workspaceId ?? "default",
+			workspace_id: existing?.workspace_id ?? "default",
 			slug,
-			docPath,
+			doc_path: docPath,
 			kind: parsed.kind,
-			headHash: hash,
-			createdAt: existing?.createdAt ?? now,
-			updatedAt: now,
-			deletedAt: existing?.deletedAt ?? null,
+			head_hash: hash,
+			created_at: existing?.created_at ?? now,
+			updated_at: now,
+			deleted_at: existing?.deleted_at ?? null,
 		};
 		await finalizeObject(env, hash, bodyText, contentType, slug, docPath);
 		await writeDocumentHead(env, doc);
@@ -372,12 +376,12 @@ async function handleAdmin(req: Request, env: Env, path: string, _slug: string):
 		const response: DocumentResponse = {
 			id: doc.id,
 			slug: doc.slug,
-			docPath: doc.docPath,
-			version: doc.headHash,
-			url: `https://palapala.me/${doc.slug}/${doc.docPath}`,
-			shareUrl: `https://palapala.me/${doc.slug}/${doc.docPath}`,
-			fileUrl: `https://palapala.me/${doc.slug}/${doc.docPath}`,
-			createdAt: doc.createdAt,
+			docPath: doc.doc_path,
+			version: doc.head_hash,
+			url: `https://palapala.me/${doc.slug}/${doc.doc_path}`,
+			shareUrl: `https://palapala.me/${doc.slug}/${doc.doc_path}`,
+			fileUrl: `https://palapala.me/${doc.slug}/${doc.doc_path}`,
+			createdAt: doc.created_at,
 		};
 		return new Response(JSON.stringify({ workspace: { id: "default", slug: doc.slug }, document: response }), {
 			headers: { "content-type": "application/json" },
@@ -396,14 +400,14 @@ async function handleAdmin(req: Request, env: Env, path: string, _slug: string):
 		const response: DocumentResponse = {
 			id: row.id,
 			slug: row.slug,
-			docPath: row.docPath,
-			version: row.headHash,
-			url: `https://palapala.me/${row.slug}/${row.docPath}`,
-			shareUrl: `https://palapala.me/${row.slug}/${row.docPath}`,
-			fileUrl: `https://palapala.me/${row.slug}/${row.docPath}`,
-			createdAt: row.createdAt,
+			docPath: row.doc_path,
+			version: row.head_hash,
+			url: `https://palapala.me/${row.slug}/${row.doc_path}`,
+			shareUrl: `https://palapala.me/${row.slug}/${row.doc_path}`,
+			fileUrl: `https://palapala.me/${row.slug}/${row.doc_path}`,
+			createdAt: row.created_at,
 		};
-		return new Response(JSON.stringify({ workspace: { id: row.workspaceId, slug: row.slug }, document: response }), {
+		return new Response(JSON.stringify({ workspace: { id: row.workspace_id, slug: row.slug }, document: response }), {
 			headers: { "content-type": "application/json" },
 		});
 	}
@@ -438,29 +442,29 @@ async function handleAdmin(req: Request, env: Env, path: string, _slug: string):
 		const now = nowIso();
 		const doc: Document = {
 			id: existing.id,
-			workspaceId: existing.workspaceId,
+			workspace_id: existing.workspace_id,
 			slug: existing.slug,
-			docPath: parsed.docPath ?? existing.docPath,
+			doc_path: parsed.docPath ?? existing.doc_path,
 			kind: parsed.kind,
-			headHash: hash,
-			createdAt: existing.createdAt,
-			updatedAt: now,
-			deletedAt: existing.deletedAt,
+			head_hash: hash,
+			created_at: existing.created_at,
+			updated_at: now,
+			deleted_at: existing.deleted_at,
 		};
-		await finalizeObject(env, hash, bodyText, contentType, doc.slug, doc.docPath);
+		await finalizeObject(env, hash, bodyText, contentType, doc.slug, doc.doc_path);
 		await writeDocumentHead(env, doc);
 
 		const response: DocumentResponse = {
 			id: doc.id,
 			slug: doc.slug,
-			docPath: doc.docPath,
-			version: doc.headHash,
-			url: `https://palapala.me/${doc.slug}/${doc.docPath}`,
-			shareUrl: `https://palapala.me/${doc.slug}/${doc.docPath}`,
-			fileUrl: `https://palapala.me/${doc.slug}/${doc.docPath}`,
-			createdAt: doc.createdAt,
+			docPath: doc.doc_path,
+			version: doc.head_hash,
+			url: `https://palapala.me/${doc.slug}/${doc.doc_path}`,
+			shareUrl: `https://palapala.me/${doc.slug}/${doc.doc_path}`,
+			fileUrl: `https://palapala.me/${doc.slug}/${doc.doc_path}`,
+			createdAt: doc.created_at,
 		};
-		return new Response(JSON.stringify({ workspace: { id: doc.workspaceId, slug: doc.slug }, document: response }), {
+		return new Response(JSON.stringify({ workspace: { id: doc.workspace_id, slug: doc.slug }, document: response }), {
 			headers: { "content-type": "application/json" },
 		});
 	}
@@ -523,7 +527,7 @@ export default {
 				if (!doc) {
 					return new Response("Not found", { status: 404 });
 				}
-				r2Key = buildVersionedKey(slug, doc.headHash, parsed.docPath);
+				r2Key = buildVersionedKey(slug, doc.head_hash, parsed.docPath);
 				cacheControl = "public, max-age=60";
 			}
 
