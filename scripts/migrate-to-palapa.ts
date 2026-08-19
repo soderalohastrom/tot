@@ -8,7 +8,11 @@
 // docs.palapala.me/<slug>/<file>.html is updated.
 //
 // This is a one-shot migration tool, not a daemon. Run it after
-// Roman's DNS flip and after the new Worker is deployed.
+// the Worker `palapala-publisher` is deployed AND the Custom
+// Domain `docs.palapala.me` is provisioned in Cloudflare
+// (Workers & Pages → palapala-publisher → Settings → Domains
+// & Routes → Add Custom Domain). The Custom Domain auto-
+// creates the DNS record; no manual DNS staging required.
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
@@ -141,6 +145,34 @@ function isDryRun(): boolean {
 	return process.env.DRY_RUN === "1" || process.argv.includes("--dry-run");
 }
 
+async function workerHealthCheck(endpoint: string): Promise<{ alive: boolean; ms: number; err?: string }> {
+	const t0 = Date.now();
+	try {
+		// /v1/me is the auth-stub endpoint, a clean liveness signal
+		// without requiring any auth or write path.
+		const ctl = new AbortController();
+		const to = setTimeout(() => ctl.abort(), 5000);
+		const resp = await fetch(`${endpoint}/v1/me`, {
+			signal: ctl.signal,
+			headers: { "accept": "application/json" },
+		});
+		clearTimeout(to);
+		return { alive: resp.ok, ms: Date.now() - t0 };
+	} catch (err) {
+		return { alive: false, ms: Date.now() - t0, err: (err as Error).message };
+	}
+}
+
+async function liveReadCheck(endpoint: string, slug: string, docPath: string): Promise<{ status: number; ms: number; bytes: number }> {
+	const t0 = Date.now();
+	const ctl = new AbortController();
+	const to = setTimeout(() => ctl.abort(), 5000);
+	const resp = await fetch(`${endpoint}/${slug}/${docPath}`, { signal: ctl.signal });
+	clearTimeout(to);
+	const text = await resp.text();
+	return { status: resp.status, ms: Date.now() - t0, bytes: text.length };
+}
+
 interface MigrationResult {
 	total: number;
 	migrated: number;
@@ -169,6 +201,20 @@ async function migrate(): Promise<MigrationResult> {
 	console.log(`  endpoint: ${ENDPOINT}`);
 	console.log(`  registry: ${REGISTRY}`);
 	if (DRY) console.log("  mode: DRY RUN (no writes)");
+
+	// Health check first — if the Worker isn't responding to /v1/me,
+	// the migration will just fail every doc. Fail fast.
+	if (!DRY) {
+		const health = await workerHealthCheck(ENDPOINT);
+		if (!health.alive) {
+			throw new Error(
+				`Worker health check failed: ${ENDPOINT}/v1/me — ${health.err ?? "non-2xx"} (${health.ms}ms). ` +
+				`Is the Worker deployed? Did the Custom Domain DNS record land? ` +
+				`Check: curl ${ENDPOINT}/v1/me`,
+			);
+		}
+		console.log(`  health: /v1/me OK (${health.ms}ms)`);
+	}
 
 	for (const [, doc] of docs) {
 		const localFile = findLocalTotFile(doc.file);
@@ -220,6 +266,21 @@ async function migrate(): Promise<MigrationResult> {
 	if (!DRY) {
 		writeRegistry(REGISTRY, reg);
 		console.log(`Updated registry at ${REGISTRY}`);
+
+		// Smoke test: read a few migrated slugs via the public read
+		// path to confirm the live Worker serves them. This catches
+		// R2 wiring, the slug-pattern logic, and the D1→R2 join.
+		const sample = docs
+			.slice(0, 3)
+			.map(([, d]) => ({ slug: d.slug, docPath: d.docPath }));
+		if (sample.length > 0) {
+			console.log(`\nSmoke test: reading ${sample.length} migrated slugs via ${ENDPOINT}:`);
+			for (const s of sample) {
+				const r = await liveReadCheck(ENDPOINT, s.slug, s.docPath);
+				const tag = r.status === 200 ? "OK" : r.status;
+				console.log(`  ${tag}  ${s.slug}/${s.docPath}  (${r.ms}ms, ${r.bytes} bytes)`);
+			}
+		}
 	}
 
 	return result;
