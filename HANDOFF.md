@@ -273,9 +273,166 @@ lands more published entries. Don't fix it speculatively.
 
 ---
 
+> **Companion perspective from the recovery agent (Roman) is at
+> [`agent-summaries/2026-08-19-roman-recovery-perspective.md`](agent-summaries/2026-08-19-roman-recovery-perspective.md).**
+> Read both side by side. They cover complementary ground.
+
+---
+
 ## 2026-08-18 — Tot → Pala rebrand (cosmetic PR; Path A)
 
 **Status:** Path A shipped as one commit on `main`. Path B (publishing Worker
 against R2 + D1, cutover from `tot.page`) is held until the morning call.
 
 **What's in this PR (one commit, ~12 files):**
+
+---
+
+### Roman's two cents (recovery perspective)
+
+> Hermes wrote the operator-side handoff above. What follows is the
+> supervisor's-side perspective — the bugs that surfaced mid-recovery, the
+> gotchas that bit, and the operational tools I left behind. Cheap for the
+> next agent to skim, expensive for them to rediscover.
+
+#### Two real bugs I caught and fixed during recovery (now committed at `d022b0b`)
+
+**Bug 1 — Document interface / D1 column casing mismatch (the silent killer).**
+`worker-publishing/src/index.ts` defined `Document` with camelCase fields
+(`workspaceId`, `docPath`, `headHash`, `createdAt`, `updatedAt`). D1 returns
+rows with snake_case column names. D1 doesn't auto-map. So
+`readDocumentHead` returned rows whose `headHash` field was actually
+`undefined` at TypeScript-runtime — the worker's downstream R2-key
+construction used `pages/<slug>/undefined/index.html`, R2 returned null,
+and the worker served 404 "Not found." The R2 blobs were there all along;
+the read path just couldn't reach them. Hermes' fix: rename `Document`
+fields to snake_case (matching D1 columns). `DocumentResponse` stays
+camelCase as the public API contract. Deploys: `a268d23b`.
+
+**Bug 2 — Migration's hash check was bricking all 12 entries that had
+source files on disk.** `scripts/migrate-to-palapa.ts` had:
+`if (sha !== doc.contentHash && sha !== doc.docSha256) { fail }`. The
+`~/.tot` registry has neither field populated — schema is just
+`[wsId, docId, slug, url, kind, docPath, bytes, createdAt, projects]`.
+So `sha !== undefined && sha !== undefined = true` — every entry failed
+the gate. Fix: hash check becomes advisory. If `manifestHash` is unset,
+warn + proceed (worker re-verifies server-side). If set and mismatched,
+still a real failure. Both bugs landed in `d022b0b`.
+
+#### Operational gotchas the next agent will hit
+
+**`wrangler r2 object get` defaults to `--local` mode, not `--remote`.** I
+made this mistake early in recovery. Without `--remote`, wrangler returns
+0-byte responses from a local simulation — leading you to conclude the
+bucket is empty when it's actually populated. **Always pass `--remote` for
+real R2 reads in this codebase.** Both `wrangler r2 object get` and
+`wrangler r2 bucket info` need it. The `palapala-pages` bucket is well-
+populated even when `--local` says 0 objects.
+
+**`wrangler` oauth_token expiry.** `~/.wrangler/config/default.toml`
+carries an `oauth_token` with `expiration_time: 2026-08-18T18:46Z`. As of
+the work in this session it was 3 days past. `wrangler deploy` still
+worked (in some cases wrangler falls back to account-level auth), but
+strict operations like `wrangler d1 create` and `wrangler d1 execute`
+needed an active refresh token. If you hit auth errors that smell like
+"Invalid API Token," run `wrangler login` once interactively to refresh
+the OAuth chain — don't waste cycles guessing.
+
+**The dashboard Worker bundle is stale relative to disk.** `dashboard/app.js`
+line 191 + 225 is Hermes' iframe↔Open fix (committed in `28d202a`), but
+`palapala.me/app.js` (the live bundle at press time) still has 6
+occurrences of `tot.url` and 0 of `pala.url`. The dedicated agent's
+first deploy should include `wrangler deploy` of the `tot-dashboard`
+config — without it, the dashboard's Open buttons will still 404 to
+`tot.page` even after the manifest is good. One `wrangler deploy` from
+the project root handles this; the config is in `wrangler.jsonc` (the
+existing one for the `tot-dashboard` Worker).
+
+**The dash 17-entry manifest regression.** Live at palapala.me went from
+59 entries (yesterday's full set) → 17 entries (12 with source bytes
+plus 5 with `projects=[gohappy/wolfpack/mise]`). Hermes' bulk-import
+PUT wrote a 12-entry manifest and that PUT replaced the existing
+59-entry manifest at the dashboard side. The bulk-import tool's "skip
+53 with placeholder URL" logic only wrote the 12 it could publish; it
+should also write the 53 placeholder entries (with `url` and
+`originalUrl` pointed at `docs.palapala.me/<slug>/index.html`) so the
+live dashboard catches up to 65. The dedicated agent should fix that
+up; the manifest is currently 17-of-65 on the cloud side.
+
+**Worker `docPath` handling is good but uncommitted.** Hermes added
+`parsed.docPath` to `POST /v1/documents` (lets the publish-time caller
+specify the doc filename instead of the previous hardcoded
+`index.html`). Typechecks clean; `worker-publishing/src/index.ts` diff
+is 6 lines, easy review. Land this in the first commit the dedicated
+agent makes so the bulk-import's `docPath: doc.docPath ?? "index.html"`
+actually matches the worker's persisted key. Until then, everything
+uploaded lands under `index.html` regardless of the registry's
+recorded `docPath`, and the manifest validator has to handle the
+mismatch (Hermes' bulk-import script does, via the
+`${slug}/index.html` index-key fallback at D1 lookup time).
+
+#### Tools I left behind (`/tmp`)
+
+These are reference artifacts from the recovery. The next agent can
+delete them or keep them; they're not in any committed path.
+
+- `/tmp/roman-deadends-compare.py` — runs the dead-ends comparison
+  across all 65 slugs. Captures 5 surfaces (Path B docPath /
+  Path B index.html / Path A mirror / dashboard iframe / upstream
+  tot.page). Output: `/tmp/deadends-<label>.json`. Use this to
+  measure improvement post-import.
+- `/tmp/roman-deadends-diff.py` — diff two snapshots (e.g.
+  `before-import.json` vs `after-import.json`). Prints per-slug
+  improvements.
+- `/tmp/deadends-before-import.json` — pre-import baseline
+  snapshot. 12 of 65 live via `docs.palapala.me/<slug>/index.html`,
+  53 still dead. After the dedicated agent's import completes,
+  re-run `python3 /tmp/roman-deadends-compare.py after-import`
+  and diff.
+- `/tmp/roman-recovery-status.md` — the recovery writeup
+  (5.4 KB). Context for what broke and why.
+- `/tmp/roman-pala-architecture.md` — the data-store architecture
+  diagram explaining the three data stores and the iframe↔open
+  routing. Read before touching the dashboard wiring.
+- `/tmp/hermes-coord-drops.md` (and similar) — Hermes' status
+  drops during the campaign. Ephemeral; can delete.
+
+#### Vox / pack protocol note (for the dedicated agent's first week)
+
+If the dedicated agent ever needs to coordinate with the pack:
+- **`herdr pane send-text <pane_id> "<msg>"`** — queue text
+- **`herdr pane send-keys <pane_id> enter`** — fire
+- **Voice tag prefix when speaking in a pane:**
+  `Roman here:` / `Hermes here:` / `CC here:` — never bare text
+- The pack runs in PANEs, primarily `w11:pC` (Hermes) and `w11:p8`
+  (Roman, when I'm the operator). `herdr pane list` from any shell
+  enumerates.
+
+#### What I'd do on day 2 (a wishlist, not a directive)
+
+In priority order, low effort / high leverage:
+
+1. **Commit Hermes' uncommitted `worker-publishing/src/index.ts`**
+   (the `parsed.docPath` change). One-line review.
+2. **Redeploy the dashboard Worker** so the live
+   `palapala.me/app.js` carries the iframe↔Open fix. Without
+   this, all Open buttons still 404.
+3. **Restore the cloud manifest to 65 entries.** Either re-run
+   Hermes' bulk-import with an "include placeholders" flag, or
+   the dedicated agent's next import script should write all 65
+   (12 with bytes, 53 with `url: docs.palapala.me/<slug>/index.html`
+   and `kind: html`).
+4. **Fix the local-mirror route** to take `/{slug}/{docPath}`
+   so the iframe's `localUrl` for entries with custom docPath
+   resolves. Hermes flagged this as a real bug; it's correct.
+5. **Optional: cache Tag-based purges.** The Worker sets
+   `Cache-Tag: ws:<slug>`. A wildcard purge on `ws:*` from
+   `palapala.me/api/cache/purge` (admin scope) would replace
+   the 60s living-URL cache window with one-shot destructive
+   invalidation. Scotty didn't ask for it; next agent can decide.
+
+That's the two cents. Good campaign, Scotty. `palapala.me` is the right
+direction and the dedicated agent on this codebase has a clean starting
+line. Roman signing off this work, picking up the next thing. 🤙🏼🐺🌺
+
+— Roman
