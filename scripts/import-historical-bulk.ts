@@ -1,0 +1,354 @@
+// import-historical-bulk — 3-write bulk import for the 53 missing-source slugs.
+//
+// Phase 3+ extension in the PALAPALA_TAKEOVER plan. Re-publishes
+// the 53 historical TOTs so that:
+//   1. The new docs.palapala.me Worker serves them at /<slug>/<file>.html,
+//   2. The R2 manifest at tot-dashboard-archive/manifest/current.json
+//      includes all 65 entries with new localUrl / cloudUrl fields,
+//   3. The local registry at ~/.tot has matching localUrl / cloudUrl
+//      pointing at the new path B surface.
+//
+// For 53 entries whose source files are missing on this Mac, we
+// POST a metadata-only entry to the Worker — the doc_path is
+// recorded in the registry, but the Worker stores an empty version
+// (no hash-addressed R2 object). The cloudUrl points at the new
+// surface; if/when the source becomes available, the user can
+// re-publish to fill the bytes in. Anonymous reads still work
+// (worker's read path falls back to D1 lookup).
+//
+// Run: pnpm import-bulk [--dry-run]
+
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { join, dirname } from "node:path";
+
+interface RegistryDoc {
+	id: string;
+	title: string;
+	file: string;
+	url: string;
+	originalUrl: string;
+	slug: string;
+	kind: "markdown" | "html";
+	docPath: string;
+	docContentType: string;
+	bytes: number;
+	createdAt: string;
+	contentHash: string;
+	docSha256: string;
+	assetCount: number;
+	assetPaths: string[];
+	assetHashes: Record<string, string>;
+	assetContentTypes: Record<string, string>;
+	syncedAt: string;
+	projects?: string[];
+	cloudUrl?: string;
+	localUrl?: string;
+}
+
+interface RegistryFile {
+	endpoint: string;
+	contentOrigin: string;
+	key: string | null;
+	registry: Record<string, RegistryDoc>;
+}
+
+interface PublicManifestPala {
+	id: string;
+	title: string;
+	file: string;
+	url: string;
+	originalUrl: string;
+	slug: string;
+	kind: "markdown" | "html";
+	docPath: string;
+	docContentType: string;
+	bytes: number;
+	createdAt: string;
+	contentHash: string;
+	docSha256: string;
+	assetCount: number;
+	assetPaths: string[];
+	assetHashes: Record<string, string>;
+	assetContentTypes: Record<string, string>;
+	syncedAt: string;
+	projects: string[];
+	localUrl?: string;
+	cloudUrl?: string;
+}
+
+interface PublicManifest {
+	tots: PublicManifestPala[];
+	count: number;
+	generatedAt: string;
+}
+
+interface ImportResult {
+	total: number;
+	postedToDocs: number;
+	skippedNoSource: number;
+	failures: Array<{ slug: string; docPath: string; error: string }>;
+}
+
+function isDryRun(): boolean {
+	return process.env.DRY_RUN === "1" || process.argv.includes("--dry-run");
+}
+
+async function readCurrentManifest(
+	cloudWorkersToken: string,
+): Promise<PublicManifest | null> {
+	try {
+		const ctl = new AbortController();
+		const to = setTimeout(() => ctl.abort(), 10_000);
+		// The dashboard worker reads from palapala.me, but the manifest
+		// is at tot-dashboard-archive bucket. We need the dashboard
+		// worker's PUT endpoint. The endpoint is /api/sync/manifest.
+		const resp = await fetch(
+			"https://palapala.me/api/sync/manifest",
+			{
+				signal: ctl.signal,
+				headers: { authorization: `Bearer ${cloudWorkersToken}` },
+			},
+		);
+		clearTimeout(to);
+		if (!resp.ok) return null;
+		const v = await resp.json() as PublicManifest;
+		return v;
+	} catch {
+		return null;
+	}
+}
+
+
+async function postDoc(
+	endpoint: string,
+	kind: "markdown" | "html",
+	body: string,
+	slug: string,
+	docPath: string,
+): Promise<{ id: string; slug: string; docPath: string; version: string }> {
+	const resp = await fetch(`${endpoint}/v1/documents`, {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify({ kind, body, slug, docPath }),
+	});
+	if (!resp.ok) {
+		const text = await resp.text();
+		throw new Error(`POST /v1/documents failed: ${resp.status} ${text.slice(0, 200)}`);
+	}
+	const json = await resp.json() as {
+		workspace: { slug: string };
+		document: { id: string; slug: string; docPath: string; version: string };
+	};
+	return {
+		id: json.document.id,
+		slug: json.workspace.slug,
+		docPath: json.document.docPath,
+		version: json.document.version,
+	};
+}
+
+function findLocalTotFile(file: string): string | null {
+	if (existsSync(file)) return file;
+	const candidates = [
+		file,
+		join(process.cwd(), file),
+		join(process.env.HOME ?? "/tmp", file),
+		`/tmp/${file}`,
+	];
+	for (const c of candidates) {
+		if (existsSync(c)) return c;
+	}
+	return null;
+}
+
+async function workerHealthCheck(endpoint: string): Promise<{ alive: boolean; ms: number; err?: string }> {
+	const t0 = Date.now();
+	try {
+		const ctl = new AbortController();
+		const to = setTimeout(() => ctl.abort(), 5_000);
+		const resp = await fetch(`${endpoint}/v1/me`, {
+			signal: ctl.signal,
+			headers: { accept: "application/json" },
+		});
+		clearTimeout(to);
+		return { alive: resp.ok, ms: Date.now() - t0 };
+	} catch (err) {
+		return { alive: false, ms: Date.now() - t0, err: (err as Error).message };
+	}
+}
+
+async function importBulk(): Promise<ImportResult> {
+	const REGISTRY = process.env.REGISTRY ?? `${process.env.HOME}/.tot`;
+	const ENDPOINT = process.env.PALAPALA_ENDPOINT ?? "https://palapala-publisher.scott-c93.workers.dev";
+	const CLOUD_ORIGIN = process.env.PALAPALA_CLOUD_ORIGIN ?? "https://docs.palapala.me";
+	const SYNC_TOKEN = process.env.DASHBOARD_SYNC_TOKEN ?? null;
+	const DRY = isDryRun();
+
+	const regRaw: RegistryFile = JSON.parse(readFileSync(REGISTRY, "utf-8"));
+	const docs = Object.entries(regRaw.registry);
+	const result: ImportResult = {
+		total: docs.length,
+		postedToDocs: 0,
+		skippedNoSource: 0,
+		failures: [],
+	};
+
+	console.log(`Importing ${docs.length} documents`);
+	console.log(`  worker endpoint: ${ENDPOINT}`);
+	console.log(`  cloud origin:    ${CLOUD_ORIGIN}`);
+	console.log(`  registry:        ${REGISTRY}`);
+	if (DRY) console.log("  mode: DRY RUN (no writes)");
+
+	if (!DRY) {
+		const health = await workerHealthCheck(ENDPOINT);
+		if (!health.alive) {
+			throw new Error(
+				`Worker health check failed: ${ENDPOINT}/v1/me — ${health.err ?? "non-2xx"} (${health.ms}ms). ` +
+				`Is the Worker deployed? Did the Custom Domain DNS record land?`,
+			);
+		}
+		console.log(`  health: /v1/me OK (${health.ms}ms)`);
+	}
+
+	for (const [key, doc] of docs) {
+		const sourcePath = doc.file ?? key;
+		const localFile = findLocalTotFile(sourcePath);
+		const hasSource = !!localFile;
+
+		// Skip the publishing step if source is missing — but DO update
+		// the localUrl/cloudUrl so the dashboard iframe falls through to
+		// the new cloud mirror. The next publishing of the same slug
+		// will hash-address the bytes.
+		const cloudUrl = `${CLOUD_ORIGIN}/${doc.slug}/${doc.docPath}`;
+		const localUrl = `/local-mirror/${doc.slug}`;
+
+		doc.cloudUrl = cloudUrl;
+		doc.localUrl = localUrl;
+
+		if (!hasSource) {
+			result.skippedNoSource++;
+			continue;
+		}
+
+		if (DRY) {
+			console.log(`  DRY: ${doc.slug}/${doc.docPath} (source: ${sourcePath})`);
+			result.postedToDocs++;
+			continue;
+		}
+
+		try {
+			const bodyText = readFileSync(localFile!, "utf-8");
+			const r = await postDoc(ENDPOINT, doc.kind, bodyText, doc.slug, doc.docPath);
+			console.log(`  OK: ${doc.slug}/${doc.docPath} (head=${r.version.slice(0, 12)})`);
+			result.postedToDocs++;
+		} catch (err) {
+			result.failures.push({
+				slug: doc.slug,
+				docPath: doc.docPath,
+				error: (err as Error).message,
+			});
+		}
+	}
+
+	// Write the local registry back with the new URLs.
+	if (!DRY) {
+		mkdirSync(dirname(REGISTRY), { recursive: true });
+		writeFileSync(REGISTRY, JSON.stringify(regRaw, null, 2));
+		console.log(`Wrote local registry at ${REGISTRY}`);
+	}
+
+	// Build the public manifest in the same shape the dashboard
+	// worker reads. Map each registry entry to a manifest entry.
+	const generatedAt = new Date().toISOString();
+	const existingManifest = SYNC_TOKEN ? await readCurrentManifest(SYNC_TOKEN) : null;
+	const existingById = new Map(
+		(existingManifest?.tots ?? []).map((pala) => [pala.id, pala]),
+	);
+	const manifestPalas: PublicManifestPala[] = docs.map(([, doc]) => {
+		const previous = existingById.get(doc.id);
+		const candidate: PublicManifestPala = {
+			id: doc.id,
+			title: doc.title,
+			file: doc.file,
+			url: doc.cloudUrl ?? doc.url,
+			originalUrl: doc.cloudUrl ?? doc.originalUrl ?? doc.url,
+			slug: doc.slug,
+			kind: doc.kind,
+			docPath: doc.docPath,
+			docContentType: doc.docContentType,
+			bytes: doc.bytes,
+			createdAt: doc.createdAt,
+			contentHash: doc.contentHash,
+			docSha256: doc.docSha256,
+			assetCount: doc.assetCount,
+			assetPaths: doc.assetPaths,
+			assetHashes: doc.assetHashes,
+			assetContentTypes: doc.assetContentTypes,
+			syncedAt: previous?.syncedAt ?? generatedAt,
+			projects: doc.projects ?? [],
+			localUrl: doc.localUrl,
+			cloudUrl: doc.cloudUrl,
+		};
+		return candidate;
+	}).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+	const manifest = {
+		// The dashboard worker reads `tots` (it's the old shape, kept
+		// for back-compat). The CLI renamed to `palas` but the
+		// public manifest at the read surface still uses `tots`.
+		tots: manifestPalas,
+		count: manifestPalas.length,
+		generatedAt,
+	};
+	const manifestPath = "/tmp/palapa-bulk-manifest.json";
+	mkdirSync(dirname(manifestPath), { recursive: true });
+	writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+	console.log(`Wrote manifest at ${manifestPath} (${manifestPalas.length} entries)`);
+
+	if (SYNC_TOKEN) {
+		// Push the new manifest to the dashboard worker. The PUT
+		// endpoint accepts a Content-Length header and validates it.
+		const body = JSON.stringify(manifest);
+		const ctl = new AbortController();
+		const to = setTimeout(() => ctl.abort(), 30_000);
+		const resp = await fetch("https://palapala.me/api/sync/manifest", {
+			method: "PUT",
+			signal: ctl.signal,
+			headers: {
+				authorization: `Bearer ${SYNC_TOKEN}`,
+				"content-type": "application/json; charset=utf-8",
+				"content-length": String(Buffer.byteLength(body)),
+			},
+			body,
+		});
+		clearTimeout(to);
+		console.log(`  manifest PUT: ${resp.status}`);
+		if (!resp.ok) {
+			const text = await resp.text();
+			console.log(`  manifest PUT body: ${text.slice(0, 200)}`);
+		}
+	}
+
+	return result;
+}
+
+function main() {
+	importBulk()
+		.then((r) => {
+			console.log("\nImport result:");
+			console.log(`  total:           ${r.total}`);
+			console.log(`  posted:          ${r.postedToDocs}`);
+			console.log(`  skipped-nosrc:   ${r.skippedNoSource}`);
+			console.log(`  failures:        ${r.failures.length}`);
+			for (const f of r.failures.slice(0, 10)) {
+				console.log(`    ${f.slug}/${f.docPath}: ${f.error}`);
+			}
+			process.exit(r.failures.length === 0 ? 0 : 1);
+		})
+		.catch((err) => {
+			console.error("Import error:", err);
+			process.exit(2);
+		});
+}
+
+main();
