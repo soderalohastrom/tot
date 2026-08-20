@@ -7,6 +7,128 @@ see [`ROADMAP.md`](ROADMAP.md).
 
 ---
 
+## 2026-08-20 — The Pala Takeover: self-hosted publishing is LIVE; repo renamed
+
+> **The fork has fully graduated.** `pala` now publishes to its own
+> infrastructure end to end. The repo directory is `~/PROJECTS/pala` (was
+> `~/PROJECTS/tot`), the package is `pala@1.0.0`, and the upstream
+> (`workspaces.plannotator.ai` / `tot.page`) is dead and irrelevant.
+> This entry is the day-3 ground truth; older entries are history.
+
+### What "make me a pala" means now (verified, not aspirational)
+
+```
+pala notes.md
+  ↳ https://docs.palapala.me/<slug>/index.html   (or /<slug>/<file>.html)
+  commit  <sha256[:7]>
+  frozen  https://docs.palapala.me/<slug>/<docPath>@<sha256>
+```
+
+Publish (with assets), update, remove all work against
+`docs.palapala.me` — proven live with an HTML page carrying css + svg + js
+assets, an update cycle, and a hard delete (R2 purge included). The first
+kept artifact: `https://docs.palapala.me/06b5239c1d865dcef808ff/pala-welcome.html`.
+
+### The three commits on `main` (backup tag: `backup/pre-pala-takeover`)
+
+1. `d90a9ca` — **wire-compat + domain flip + package rename.**
+   - `worker-publishing/src/index.ts` rewritten to speak the upstream `/v1`
+     wire contract `src/http.ts` expects: snake_case entities, exact response
+     wrapping (`{workspace, document}` for POST /v1/documents, **bare** entity
+     for workspace-doc POST/GET/PUT), raw-body PUT with kind from
+     content-type, **204** DELETE, `POST /v1/workspaces` accepts `{}`.
+     Before this, the Worker spoke camelCase-with-wrappers and every CLI flow
+     except bare publish was broken.
+   - Simplifications (documented in the file header): **workspace id == slug**
+     (no workspaces table; assets route by path); assets at R2
+     `assets/<slug>/<path>` served as living pointers with document-miss
+     fallthrough; stable doc ids from `(slug, docPath)` (fixes a PK collision
+     where identical content under two slugs shared a content-derived id);
+     DELETE purges the slug's R2 objects.
+   - All generated URLs on `https://docs.palapala.me` (was the palapala.me
+     apex — every registered URL was a dead link before).
+   - `src/config.ts` defaults flipped; `~/.tot` endpoint/contentOrigin
+     repointed (backup at `~/.tot.backup-pre-pala-20260820`);
+     `scripts/verify-domain-contract.mjs` **inverted** (asserts
+     docs.palapala.me, forbids upstream hosts); test fixtures swept;
+     `package.json` → `pala@1.0.0`; `tsconfig.json` now typechecks
+     `worker-publishing/` (immediately caught two dead vars).
+2. `0e4110d` — dashboard CSP `frame-src` → `docs.palapala.me`; bulk-import
+   DRY_RUN gates the live manifest PUT; bulk-import parses snake_case;
+   CLAUDE.md/AGENTS.md swept to the self-hosted reality.
+3. `671355a` — `tot` shim uses `process.exitCode`, not `process.exit()`.
+   The hard exit killed the dashboard server right after its banner
+   (LaunchAgent crash-loop after the npm relink finally mapped
+   `/opt/homebrew/bin/tot` → shim). If the dashboard ever "starts then
+   vanishes" again, check this first.
+
+### The manifest regression is FIXED: 65/65 (was 59 → 17)
+
+- Root cause: the bulk-import PUT a 17-entry manifest, and every later
+  `dashboard sync` read it as "previous" — the carry-forward
+  (`buildMetadataOnlyEntry` in `src/cloud-sync.ts`) can only retain slugs
+  that exist in the previous manifest. The 53 were unrecoverable **through
+  sync alone**.
+- Recovery: **R2 object keys ARE the hashes.** Listed `tots/` in
+  `tot-dashboard-archive` via the CF v4 API (wrangler OAuth token from
+  `~/.wrangler/config/default.toml` works as a Bearer), rebuilt 42 entries
+  from object metadata (titles fetched from `/mirror/`), made 6 true
+  placeholders (no bytes anywhere: `6ehpDE…`, `MrfLvL…`, `T9Jhin…`,
+  `Tv77NA…`, `YKvbtP…`, `ZNA7lX…` — sha256(empty) sentinel hashes, cards
+  render, content 404s until source returns), seeded them with one PUT.
+  `pala dashboard sync` then reported **"65 palas, 0 new objects, manifest
+  unchanged"** — carry-forward is stable.
+- The tool: `/tmp/pala-manifest-restore.py` (rerunnable; `--write` to apply).
+  It also trimmed 5 registry entries' asset refs whose bytes exist nowhere
+  (logged loudly, backed up).
+- The worker saves `manifest/snapshots/<generatedAt>.json` on every PUT —
+  future regressions can diff/restore from there.
+
+### Surface state (all verified this session)
+
+- **Localhost `127.0.0.1:4173`** (LaunchAgent `com.paumalu.tot-dashboard`):
+  65 cards, `capabilities.manage: true` — hover tag/rename/delete work;
+  tag round-trip verified via CLI. Restarted post-rename; reads `~/.tot` live.
+- **palapala.me `/`**: dead-end landing (obfuscated home) ✅.
+  **`/api/tots`** unscoped → 404 ✅. **`/scotty`** (OWNER_SLUG): 65, read-only ✅.
+  Client rooms: `/mise` 24, `/gohappy` 7, `/wolfpack` 2, unknown slug → empty ✅.
+- **docs.palapala.me**: publisher Worker live (version fa21cef8+);
+  12 migrated docs + welcome page serving; `/v1/me` stub OK.
+- **D1 `palapala-registry`**: 12 real rows (junk test rows
+  `romanTestDoc2026`/`romanFreshSlug42` deleted, R2 objects purged).
+
+### Repo/machine layout after the rename
+
+- Repo: `~/PROJECTS/pala` (branch `main`; `path-b-publishing-worker` merged
+  and kept as tag `backup/pre-pala-takeover`). Remotes unchanged
+  (`origin` = soderalohastrom/tot, `upstream` = plannotator/tot, reference only).
+- npm: global package `pala` → `~/PROJECTS/pala`; bins `pala` (→ dist/cli.js)
+  and `tot` (→ dist/tot-shim.js, 90-day alias).
+- LaunchAgents reference `/opt/homebrew/bin/tot` only — no plist changes
+  needed. `~/.tot` path kept per decision.
+- The DSH/agent session workspace may still point at the old path; use
+  `~/PROJECTS/pala` explicitly.
+
+### Known gaps / next moves (not urgent)
+
+- **6 placeholder slugs** need source bytes to become real: same recovery
+  flow as before (find bytes → `pala <file> --slug <existing>`… actually
+  publish the file fresh and the registry/REST will sort identity out —
+  slugs are durable, the placeholder upgrades on next sync).
+- **Format drift**: `pnpm format` normalizes ~25 untouched files (oxfmt
+  rewrapping). Left uncommitted deliberately; do one dedicated format commit
+  when convenient.
+- **Old registry `url` fields** still say `tot.page` for the 65 historical
+  entries (they're the record of where the page lived; `originalUrl` in the
+  manifest and all dashboard actions use working URLs). Sync downloads fall
+  back to the mirrored bytes, so this is cosmetic.
+- **`pala login --key`** is a stub by decision (`/v1/me` returns anonymous).
+- The stale milestone slug in the 2026-08-19 entry (`PBkFcrRLBsVYUs07x8JFeA`)
+  does not exist — don't chase it.
+- Not pushed to `origin` — Scotty's call when to publish `main`.
+
+---
+
 ## 2026-08-19 — Path B shipped, branded as `pala`; dedicated agent handoff
 
 > ⚠️ **This is the day-2 handoff.** Scotty is parking Hermes (the wolfpack
