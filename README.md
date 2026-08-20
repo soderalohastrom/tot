@@ -1,7 +1,7 @@
 <p align="center">
-  <img src="./site/assets/readme/totpage2.webp" alt="tot.page" width="700">
+  <img src="./site/assets/readme/totpage2.webp" alt="palapala.me" width="700">
   <br>
-  <sub><a href="https://tot.page">tot.page</a> is what enables <a href="https://palapala.me">palapala.me</a></sub>
+  <sub><a href="https://palapala.me">palapala.me</a> — documents, kept. <em>palapala</em> is Hawaiian for document.</sub>
 </p>
 
 # pala — write it, keep it.
@@ -14,14 +14,14 @@ real version with a frozen `@hash` URL, like a commit, so you can point people a
 "exactly this snapshot."
 
 ```bash
-npm i -g @plannotator/tot   # installs a binary called `pala`
+npm i -g github:soderalohastrom/tot   # installs a binary called `pala`
 ```
 
 ```
 pala notes.md
-  ↳ https://tot.page/aB3xK9q
+  ↳ https://docs.palapala.me/aB3xK9q
   commit  e5f6c1a
-  frozen  https://tot.page/aB3xK9q/index.md@e5f6c1a
+  frozen  https://docs.palapala.me/aB3xK9q/index.md@e5f6c1a
 ```
 
 > The binary is `pala`. The legacy `tot` command is kept as an alias for one minor so
@@ -47,9 +47,9 @@ For HTML, `pala` also uploads direct local browser dependencies before the page 
 stylesheets, scripts, video, `srcset` entries, and video posters. It skips external URLs and ordinary
 navigation links. There is no config file, build step, routing layer, or bundler.
 
-Your link is live. Run `pala update` and the same `tot.page/...` link shows the new version. Every version also keeps a frozen `@hash` link that never changes, for when you want a fixed snapshot.
+Your link is live. Run `pala update` and the same `docs.palapala.me/...` link shows the new version. Every version also keeps a frozen `@hash` link that never changes, for when you want a fixed snapshot.
 
-`pala remove` removes the living page. Frozen snapshot links are permanent while the workspace exists.
+`pala remove` removes the living page and its stored bytes. Frozen snapshot links die with it.
 
 No accounts, no tokens. The link is the key. Treat them as you would excalidraw.
 
@@ -96,18 +96,18 @@ pala dashboard install-agent
 pala dashboard uninstall-agent
 ```
 
-See [docs/CLOUD_DASHBOARD.md](docs/CLOUD_DASHBOARD.md) for architecture, Cloudflare Access setup, restore behavior, and Hostinger backup instructions. Where this is headed next — owning the publisher end to end — is in [PALAPALA.md](PALAPALA.md), with the migration mechanics in [docs/PALAPALA_TAKEOVER.md](docs/PALAPALA_TAKEOVER.md).
+See [docs/CLOUD_DASHBOARD.md](docs/CLOUD_DASHBOARD.md) for architecture, Cloudflare Access setup, restore behavior, and Hostinger backup instructions. The product north star is [PALAPALA.md](PALAPALA.md); how the publishing backend came to be owned end to end is in [docs/PALAPALA_TAKEOVER.md](docs/PALAPALA_TAKEOVER.md).
 
 ## Configuration
 
-State lives in `~/.tot`: the Workspaces API endpoint and the list of pages you have published. Override the API origin for one run with `--endpoint <url>`. Content links remain on `tot.page`; the API origin is `workspaces.plannotator.ai` for public release and `staging.workspaces.plannotator.ai` for staging verification.
+State lives in `~/.tot`: the API endpoint and the list of pages you have published. Override the API origin for one run with `--endpoint <url>`. The API origin and the content origin are both `docs.palapala.me` — one Worker (`palapala-publisher`) serves the `/v1` API and the raw pages.
 
 > The `~/.tot` path is preserved through the rebrand. Migrating it to `~/.pala` would break
 > external scripts that read from it, so it stays. A future minor may move it.
 
 ## Built on
 
-[Cloudflare Artifacts](https://www.cloudflare.com/products/artifacts/). Every version is a real git commit.
+Cloudflare Workers, R2, and D1. Every version is a content-addressed R2 object; a D1 row points each living URL at its current hash. Forked from [`@plannotator/tot`](https://github.com/plannotator/tot) — mahalo to the original author for the model.
 
 ## License
 

@@ -4,11 +4,11 @@ import path from "node:path";
 
 import { normalizeProjects } from "./projects.js";
 
-/** The /v1 API origin the CLI talks to. The API is a Workspaces surface; tot.page
- * remains the cookieless raw content origin. */
-export const DEFAULT_ENDPOINT = "https://workspaces.plannotator.ai";
+/** The /v1 API origin the CLI talks to. The palapala-publisher Worker serves
+ * both the /v1 API and the raw content from one origin. */
+export const DEFAULT_ENDPOINT = "https://docs.palapala.me";
 /** The public content origin where living pages are served (the link you share). */
-export const DEFAULT_CONTENT_ORIGIN = "https://tot.page";
+export const DEFAULT_CONTENT_ORIGIN = "https://docs.palapala.me";
 
 export interface RegistryEntry {
 	wsId: string;

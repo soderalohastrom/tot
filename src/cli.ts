@@ -78,7 +78,7 @@ const HELP = `pala — write it, keep it.
   working — both names invoke the same code.
 
 flags
-  --endpoint <url>     override the API origin (default https://workspaces.plannotator.ai)
+  --endpoint <url>     override the API origin (default https://docs.palapala.me)
   --key <KEY>          API key for this run (login persists it)
   --title <text>       inject <title>/og:title/twitter:title into an .html file's <head>
   --description <text> inject description/og:description/twitter:description
@@ -223,7 +223,9 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
 				if (timer) clearTimeout(timer);
 				timer = setTimeout(async () => {
 					timer = null;
-					console.log(`\n[${new Date().toISOString()}] change detected (${label}) — syncing`);
+					console.log(
+						`\n[${new Date().toISOString()}] change detected (${label}) — syncing`,
+					);
 					await runOnce();
 				}, debounceMs);
 			};
@@ -295,7 +297,9 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
 		}
 		if (dashboardCommand === "install-agent") {
 			const definitions = installDashboardLaunchAgents();
-			console.log(`installed ${definitions.length} LaunchAgents (dashboard + watch-mode sync)`);
+			console.log(
+				`installed ${definitions.length} LaunchAgents (dashboard + watch-mode sync)`,
+			);
 			return 0;
 		}
 		if (dashboardCommand === "uninstall-agent") {
@@ -357,9 +361,15 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
 			// then add or remove the project from each match.
 			const project = normalizeProjectSlug(args._[2] ?? "");
 			if (dashboardCommand === "tag-bulk" || dashboardCommand === "untag-bulk") {
-				if (!project) throw new Error(`usage: pala dashboard ${dashboardCommand} <project> [--match <substring>] [--match-regex <re>] [--limit N] [--dry-run]`);
+				if (!project)
+					throw new Error(
+						`usage: pala dashboard ${dashboardCommand} <project> [--match <substring>] [--match-regex <re>] [--limit N] [--dry-run]`,
+					);
 			} else {
-				if (args._[2]) throw new Error(`usage: pala dashboard ${dashboardCommand} [--match <substring>] [--match-regex <re>] [--limit N] [--dry-run]`);
+				if (args._[2])
+					throw new Error(
+						`usage: pala dashboard ${dashboardCommand} [--match <substring>] [--match-regex <re>] [--limit N] [--dry-run]`,
+					);
 			}
 			const match = flagStr(args.flags, "match") ?? "";
 			const matchRegex = flagStr(args.flags, "match-regex");
@@ -401,7 +411,9 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
 				if (ok) matches.push(pair);
 			}
 			if (matches.length === 0) {
-				console.log(`no matches for --match=${match || "*"} ${re ? `--match-regex=${matchRegex}` : ""}`);
+				console.log(
+					`no matches for --match=${match || "*"} ${re ? `--match-regex=${matchRegex}` : ""}`,
+				);
 				return 0;
 			}
 			if (Number.isFinite(limit)) matches.splice(limit);

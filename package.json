@@ -1,76 +1,76 @@
 {
-  "name": "@plannotator/tot",
-  "version": "0.1.2",
-  "description": "Git-backed publishing for Markdown and HTML: one living tot.page URL with immutable @hash snapshots.",
-  "keywords": [
-    "cli",
-    "markdown",
-    "plannotator",
-    "publish",
-    "tot",
-    "tot.page"
-  ],
-  "homepage": "https://github.com/plannotator/tot#readme",
-  "bugs": "https://github.com/plannotator/tot/issues",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/plannotator/tot.git"
-  },
-  "bin": {
-    "pala": "dist/cli.js",
-    "tot": "dist/tot-shim.js"
-  },
-  "files": [
-    "dist",
-    "dashboard"
-  ],
-  "type": "module",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    }
-  },
-  "publishConfig": {
-    "access": "public"
-  },
-  "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "cloud:deploy": "wrangler deploy",
-    "cloud:dev": "wrangler dev",
-    "cloud:types": "wrangler types worker-configuration.d.ts --strict-vars false",
-    "dashboard": "pnpm build && node dist/cli.js dashboard",
-    "verify:contract": "node scripts/verify-domain-contract.mjs",
-    "migrate:palapa": "tsc -p tsconfig.scripts.json && node --experimental-strip-types scripts/migrate-to-palapa.ts",
-    "migrate:palapa:dry-run": "DRY_RUN=1 tsc -p tsconfig.scripts.json && node --experimental-strip-types scripts/migrate-to-palapa.ts",
-    "lint": "oxlint",
-    "lint:fix": "oxlint --fix",
-    "format": "oxfmt --write .",
-    "format:check": "oxfmt --check .",
-    "typecheck": "wrangler types --check worker-configuration.d.ts --strict-vars false && tsc --noEmit -p tsconfig.json",
-    "test": "vitest run",
-    "prepack": "pnpm build && pnpm verify:contract",
-    "prepublishOnly": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm verify:contract",
-    "import:bulk": "tsc -p tsconfig.scripts.json && node --experimental-strip-types scripts/import-historical-bulk.ts",
-    "import:bulk:dry-run": "DRY_RUN=1 tsc -p tsconfig.scripts.json && node --experimental-strip-types scripts/import-historical-bulk.ts"
-  },
-  "dependencies": {
-    "@resvg/resvg-js": "^2.6.2",
-    "jose": "^6.2.3",
-    "parse5": "^8.0.1"
-  },
-  "devDependencies": {
-    "@cloudflare/workers-types": "^5.20260712.1",
-    "@types/node": "^22.19.21",
-    "oxfmt": "^0.43.0",
-    "oxlint": "^1.58.0",
-    "typescript": "6.0.2",
-    "vitest": "^3.0.0",
-    "wrangler": "^4.110.0"
-  },
-  "engines": {
-    "node": ">=20.19"
-  },
-  "packageManager": "pnpm@11.9.0"
+	"name": "pala",
+	"version": "1.0.0",
+	"description": "pala — git-backed publishing to palapala.me: write it, keep it.",
+	"keywords": [
+		"cli",
+		"markdown",
+		"pala",
+		"palapala",
+		"palapala.me",
+		"publish"
+	],
+	"homepage": "https://palapala.me",
+	"bugs": "https://github.com/soderalohastrom/tot/issues",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/soderalohastrom/tot.git"
+	},
+	"bin": {
+		"pala": "dist/cli.js",
+		"tot": "dist/tot-shim.js"
+	},
+	"files": [
+		"dist",
+		"dashboard"
+	],
+	"type": "module",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		}
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"scripts": {
+		"build": "tsc -p tsconfig.build.json",
+		"cloud:deploy": "wrangler deploy",
+		"cloud:dev": "wrangler dev",
+		"cloud:types": "wrangler types worker-configuration.d.ts --strict-vars false",
+		"dashboard": "pnpm build && node dist/cli.js dashboard",
+		"verify:contract": "node scripts/verify-domain-contract.mjs",
+		"migrate:palapa": "tsc -p tsconfig.scripts.json && node --experimental-strip-types scripts/migrate-to-palapa.ts",
+		"migrate:palapa:dry-run": "DRY_RUN=1 tsc -p tsconfig.scripts.json && node --experimental-strip-types scripts/migrate-to-palapa.ts",
+		"lint": "oxlint",
+		"lint:fix": "oxlint --fix",
+		"format": "oxfmt --write .",
+		"format:check": "oxfmt --check .",
+		"typecheck": "wrangler types --check worker-configuration.d.ts --strict-vars false && tsc --noEmit -p tsconfig.json",
+		"test": "vitest run",
+		"prepack": "pnpm build && pnpm verify:contract",
+		"prepublishOnly": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm verify:contract",
+		"import:bulk": "tsc -p tsconfig.scripts.json && node --experimental-strip-types scripts/import-historical-bulk.ts",
+		"import:bulk:dry-run": "DRY_RUN=1 tsc -p tsconfig.scripts.json && node --experimental-strip-types scripts/import-historical-bulk.ts"
+	},
+	"dependencies": {
+		"@resvg/resvg-js": "^2.6.2",
+		"jose": "^6.2.3",
+		"parse5": "^8.0.1"
+	},
+	"devDependencies": {
+		"@cloudflare/workers-types": "^5.20260712.1",
+		"@types/node": "^22.19.21",
+		"oxfmt": "^0.43.0",
+		"oxlint": "^1.58.0",
+		"typescript": "6.0.2",
+		"vitest": "^3.0.0",
+		"wrangler": "^4.110.0"
+	},
+	"engines": {
+		"node": ">=20.19"
+	},
+	"packageManager": "pnpm@11.9.0"
 }

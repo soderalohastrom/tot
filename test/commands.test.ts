@@ -94,10 +94,10 @@ describe("publish", () => {
 		await publishCommand(file, cfg, makeDeps(http));
 
 		expect(gets).toBe(3); // polled exactly until the hash appeared
-		expect(logs.join("\n")).toContain("https://tot.page/k7q9zyxwvu98abcd");
+		expect(logs.join("\n")).toContain("https://docs.palapala.me/k7q9zyxwvu98abcd");
 		expect(logs.join("\n")).toContain("commit  abc123");
 		expect(logs.join("\n")).toContain(
-			"frozen  https://tot.page/k7q9zyxwvu98abcd/index.md@abc123",
+			"frozen  https://docs.palapala.me/k7q9zyxwvu98abcd/index.md@abc123",
 		);
 		// And the registry recorded the page.
 		expect(cfg.getEntryByFile(file)?.slug).toBe("k7q9zyxwvu98abcd");
@@ -129,9 +129,9 @@ describe("publish", () => {
 		expect(parsed.kind).toBe("html");
 		expect(parsed.body).toBe("<h1>Hi</h1>");
 		// Bare HTML uses the one-shot API, which defaults the first HTML doc to index.html.
-		expect(logs.join("\n")).toContain("https://tot.page/slugH");
+		expect(logs.join("\n")).toContain("https://docs.palapala.me/slugH");
 		expect(logs.join("\n")).toContain("commit  v1");
-		expect(logs.join("\n")).toContain("frozen  https://tot.page/slugH/index.html@v1");
+		expect(logs.join("\n")).toContain("frozen  https://docs.palapala.me/slugH/index.html@v1");
 	});
 
 	it("publishes HTML with local assets by uploading assets before committing the page", async () => {
@@ -157,7 +157,7 @@ describe("publish", () => {
 					workspace_id: "ws_assets",
 					doc_path: "page.html",
 					version: "assetv1",
-					file_url: "https://tot.page/assetSlug/page.html@assetv1",
+					file_url: "https://docs.palapala.me/assetSlug/page.html@assetv1",
 				});
 			}
 			throw new Error("unexpected " + call.method + " " + call.path);
@@ -183,7 +183,7 @@ describe("publish", () => {
 			"img/logo.webp": { contentType: "image/webp" },
 			"app.js": { contentType: "application/javascript" },
 		});
-		expect(logs.join("\n")).toContain("https://tot.page/assetSlug/page.html");
+		expect(logs.join("\n")).toContain("https://docs.palapala.me/assetSlug/page.html");
 	});
 
 	it("rejects invalid HTML-with-assets document paths before any network call", async () => {
@@ -320,7 +320,7 @@ describe("auto-image (og banner)", () => {
 		expect(http.calls[1].headers?.["content-type"]).toBe("image/png");
 		const documentBody = JSON.parse(String(http.calls[2].body));
 		expect(documentBody.body).toContain(
-			'<meta property="og:image" content="https://tot.page/slugAuto/__tot-og-image.png" />',
+			'<meta property="og:image" content="https://docs.palapala.me/slugAuto/__tot-og-image.png" />',
 		);
 		expect(cfg.getEntryByFile(file)?.assets).toHaveProperty("__tot-og-image.png");
 	});
@@ -389,7 +389,7 @@ describe("auto-image (og banner)", () => {
 			wsId: "ws_upd",
 			docId: "doc_upd",
 			slug: "slugUpd",
-			url: "https://tot.page/slugUpd/page.html",
+			url: "https://docs.palapala.me/slugUpd/page.html",
 			kind: "html",
 			docPath: "page.html",
 			bytes: 1,
@@ -414,11 +414,11 @@ describe("auto-image (og banner)", () => {
 		]);
 		const putBody = String(http.calls[1].body);
 		expect(putBody).toContain(
-			'<meta property="og:image" content="https://tot.page/slugUpd/__tot-og-image.png" />',
+			'<meta property="og:image" content="https://docs.palapala.me/slugUpd/__tot-og-image.png" />',
 		);
 		// og:url auto-fills from the already-known living URL.
 		expect(putBody).toContain(
-			'<meta property="og:url" content="https://tot.page/slugUpd/page.html" />',
+			'<meta property="og:url" content="https://docs.palapala.me/slugUpd/page.html" />',
 		);
 	});
 
@@ -429,7 +429,7 @@ describe("auto-image (og banner)", () => {
 			wsId: "ws_dedup",
 			docId: "doc_dedup",
 			slug: "slugDedup",
-			url: "https://tot.page/slugDedup/page.html",
+			url: "https://docs.palapala.me/slugDedup/page.html",
 			kind: "html",
 			docPath: "page.html",
 			bytes: 1,
@@ -459,11 +459,11 @@ describe("auto-image (og banner)", () => {
 
 describe("URL helpers", () => {
 	it("encodes non-index document path segments in living and frozen URLs", () => {
-		expect(livingUrl("https://tot.page/", "slug", "my page.html")).toBe(
-			"https://tot.page/slug/my%20page.html",
+		expect(livingUrl("https://docs.palapala.me/", "slug", "my page.html")).toBe(
+			"https://docs.palapala.me/slug/my%20page.html",
 		);
-		expect(frozenUrl("https://tot.page/", "slug", "dir/my page.html", "abc123")).toBe(
-			"https://tot.page/slug/dir/my%20page.html@abc123",
+		expect(frozenUrl("https://docs.palapala.me/", "slug", "dir/my page.html", "abc123")).toBe(
+			"https://docs.palapala.me/slug/dir/my%20page.html@abc123",
 		);
 	});
 });
@@ -478,7 +478,7 @@ describe("update", () => {
 			wsId: "ws_9",
 			docId: "doc_9",
 			slug: "slug9",
-			url: "https://tot.page/slug9",
+			url: "https://docs.palapala.me/slug9",
 			kind: "markdown",
 			docPath: "index.md",
 			bytes: 1,
@@ -498,7 +498,9 @@ describe("update", () => {
 		expect(seen?.headers?.["content-type"]).toBe("text/markdown");
 		expect(seen?.body).toBe("# v2 content");
 		expect(logs.join("\n")).toContain("commit   newhash");
-		expect(logs.join("\n")).toContain("frozen   https://tot.page/slug9/index.md@newhash");
+		expect(logs.join("\n")).toContain(
+			"frozen   https://docs.palapala.me/slug9/index.md@newhash",
+		);
 	});
 
 	// Catches: `tot update <url>` (the form SPEC §4 advertises) not reading from
@@ -512,7 +514,7 @@ describe("update", () => {
 			wsId: "ws_u",
 			docId: "doc_u",
 			slug: "slugU",
-			url: "https://tot.page/slugU",
+			url: "https://docs.palapala.me/slugU",
 			kind: "markdown",
 			docPath: "index.md",
 			bytes: 1,
@@ -526,7 +528,7 @@ describe("update", () => {
 			return jsonResponse(200, { id: "doc_u", version: "urlhash" });
 		});
 		// Pass the living URL, not the file path.
-		await updateCommand("https://tot.page/slugU", cfg, makeDeps(http));
+		await updateCommand("https://docs.palapala.me/slugU", cfg, makeDeps(http));
 
 		expect(seen?.method).toBe("PUT");
 		expect(seen?.path).toBe("/v1/workspaces/ws_u/documents/doc_u");
@@ -545,7 +547,7 @@ describe("update", () => {
 			wsId: "ws_html",
 			docId: "doc_html",
 			slug: "slugHtml",
-			url: "https://tot.page/slugHtml/page.html",
+			url: "https://docs.palapala.me/slugHtml/page.html",
 			kind: "html",
 			docPath: "page.html",
 			bytes: 1,
@@ -607,7 +609,7 @@ describe("update", () => {
 			wsId: "ws_html",
 			docId: "doc_html",
 			slug: "slugHtml",
-			url: "https://tot.page/slugHtml/page.html",
+			url: "https://docs.palapala.me/slugHtml/page.html",
 			kind: "html",
 			docPath: "page.html",
 			bytes: 1,
@@ -635,7 +637,7 @@ describe("update", () => {
 			wsId: "ws_x",
 			docId: "doc_x",
 			slug: "slugX",
-			url: "https://tot.page/slugX",
+			url: "https://docs.palapala.me/slugX",
 			kind: "markdown",
 			docPath: "index.md",
 			bytes: 1,
@@ -647,9 +649,9 @@ describe("update", () => {
 		// Resolve via the full URL: getEntryByFile(url) is null (no such key), so
 		// resolution falls to getEntryBySlug → {file: null}. Then update must emit
 		// the clear "needs a local file" error, never "file not found: <url>".
-		await expect(updateCommand("https://tot.page/slugX", cfg, makeDeps(http))).rejects.toThrow(
-			/needs a local file/,
-		);
+		await expect(
+			updateCommand("https://docs.palapala.me/slugX", cfg, makeDeps(http)),
+		).rejects.toThrow(/needs a local file/);
 		expect(http.calls).toHaveLength(0);
 	});
 
@@ -675,7 +677,7 @@ describe("remove", () => {
 			wsId: "ws_5",
 			docId: "doc_5",
 			slug: "slug5",
-			url: "https://tot.page/slug5",
+			url: "https://docs.palapala.me/slug5",
 			kind: "markdown",
 			docPath: "index.md",
 			bytes: 1,
@@ -699,7 +701,7 @@ describe("remove", () => {
 			wsId: "ws_remove",
 			docId: "doc_remove",
 			slug: "remove",
-			url: "https://tot.page/remove",
+			url: "https://docs.palapala.me/remove",
 			kind: "markdown",
 			docPath: "index.md",
 			bytes: 1,
@@ -712,7 +714,7 @@ describe("remove", () => {
 				wsId: "ws_keep",
 				docId: "doc_keep",
 				slug: "keep",
-				url: "https://tot.page/keep",
+				url: "https://docs.palapala.me/keep",
 				kind: "markdown",
 				docPath: "index.md",
 				bytes: 1,
@@ -739,7 +741,7 @@ describe("list", () => {
 			wsId: "ws_a",
 			docId: "doc_a",
 			slug: "slugA",
-			url: "https://tot.page/slugA",
+			url: "https://docs.palapala.me/slugA",
 			kind: "markdown",
 			docPath: "index.md",
 			bytes: 10,
@@ -749,7 +751,7 @@ describe("list", () => {
 			wsId: "ws_b",
 			docId: "doc_b",
 			slug: "slugB",
-			url: "https://tot.page/slugB/b.html",
+			url: "https://docs.palapala.me/slugB/b.html",
 			kind: "html",
 			docPath: "b.html",
 			bytes: 20,
@@ -760,8 +762,8 @@ describe("list", () => {
 		});
 		listCommand(cfg, makeDeps(http));
 		const out = logs.join("\n");
-		expect(out).toContain("https://tot.page/slugA");
-		expect(out).toContain("https://tot.page/slugB/b.html");
+		expect(out).toContain("https://docs.palapala.me/slugA");
+		expect(out).toContain("https://docs.palapala.me/slugB/b.html");
 		expect(http.calls).toHaveLength(0);
 	});
 });
@@ -770,10 +772,14 @@ describe("livingUrl", () => {
 	// Catches: an index doc keeping its filename in the URL. index.md/index.html
 	// must resolve to the bare /{slug}; other paths keep the filename.
 	it("omits index.md/index.html and keeps other paths", () => {
-		expect(livingUrl("https://tot.page", "s1", "index.md")).toBe("https://tot.page/s1");
-		expect(livingUrl("https://tot.page", "s1", "index.html")).toBe("https://tot.page/s1");
-		expect(livingUrl("https://tot.page", "s1", "notes.md")).toBe(
-			"https://tot.page/s1/notes.md",
+		expect(livingUrl("https://docs.palapala.me", "s1", "index.md")).toBe(
+			"https://docs.palapala.me/s1",
+		);
+		expect(livingUrl("https://docs.palapala.me", "s1", "index.html")).toBe(
+			"https://docs.palapala.me/s1",
+		);
+		expect(livingUrl("https://docs.palapala.me", "s1", "notes.md")).toBe(
+			"https://docs.palapala.me/s1/notes.md",
 		);
 	});
 });
