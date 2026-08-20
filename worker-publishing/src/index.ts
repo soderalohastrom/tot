@@ -205,7 +205,7 @@ async function handleAdmin(req: Request, env: Env, path: string, _slug: string):
 			return jsonError(413, "Body too large", "ERR_BODY_TOO_LARGE");
 		}
 
-		let parsed: { kind?: "markdown" | "html"; body?: string; slug?: string };
+		let parsed: { kind?: "markdown" | "html"; body?: string; slug?: string; docPath?: string };
 		try {
 			parsed = JSON.parse(body);
 		} catch {
@@ -229,25 +229,29 @@ async function handleAdmin(req: Request, env: Env, path: string, _slug: string):
 		if (!SLUG_PATTERN.test(slug)) {
 			return jsonError(400, "Invalid slug", "ERR_SLUG");
 		}
+		const docPath: string = parsed.docPath ?? "index.html";
+		if (!DOC_PATH_PATTERN.test(docPath)) {
+			return jsonError(400, "Invalid docPath", "ERR_PATH");
+		}
 
 		const contentType = await docContentType(parsed.kind);
 		const hash = await docHash(bodyText);
 		const id = `doc_${hash.slice(0, 12)}`;
 		const now = nowIso();
 
-		const existing = await readDocumentHead(env, slug, "index.html");
+		const existing = await readDocumentHead(env, slug, docPath);
 		const doc: Document = {
 			id: existing?.id ?? id,
 			workspace_id: existing?.workspace_id ?? "default",
 			slug,
-			doc_path: "index.html",
+			doc_path: docPath,
 			kind: parsed.kind,
 			head_hash: hash,
 			created_at: existing?.created_at ?? now,
 			updated_at: now,
 			deleted_at: null,
 		};
-		await finalizeObject(env, hash, parsed.body, contentType, slug, "index.html");
+		await finalizeObject(env, hash, parsed.body, contentType, slug, docPath);
 		await writeDocumentHead(env, doc);
 
 		const response: DocumentResponse = {

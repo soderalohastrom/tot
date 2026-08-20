@@ -210,6 +210,62 @@ async function importBulk(): Promise<ImportResult> {
 		console.log(`  health: /v1/me OK (${health.ms}ms)`);
 	}
 
+	// Fetch real hashes from D1 for any local-registry entry whose
+	// contentHash / docSha256 fields are empty. The local registry
+	// was never updated with the head hashes from the new Worker
+	// (the on-disk file changes don't propagate to the local
+	// JSON), so we patch them in from D1 directly. This keeps the
+	// manifest validation happy without requiring a new CLI
+	// subcommand.
+	const d1exe = process.env.D1HASH_QUERY;
+	if (d1exe !== "0") {
+		try {
+			const ctl = new AbortController();
+			const to = setTimeout(() => ctl.abort(), 30_000);
+			// Fallback: shell out to wrangler. This is intentionally
+			// lightweight — we shell out at most once per import run.
+			const { spawnSync } = await import("node:child_process");
+			const r = spawnSync(
+				"npx",
+				[
+					"wrangler",
+					"d1",
+					"execute",
+					"palapala-registry",
+					"--command",
+					"SELECT slug, doc_path, head_hash FROM documents WHERE deleted_at IS NULL;",
+					"--remote",
+					"--json",
+				],
+				{ encoding: "utf-8", timeout: 30_000, cwd: process.cwd() },
+			);
+			clearTimeout(to);
+			if (r.status === 0 && r.stdout) {
+				const j = JSON.parse(r.stdout) as Array<{ results: Array<{ slug: string; doc_path: string; head_hash: string }> }>;
+				const rows = j[0]?.results ?? [];
+				const byKey = new Map<string, string>();
+				for (const row of rows) {
+				byKey.set(`${row.slug}/${row.doc_path}`, row.head_hash);
+				byKey.set(`${row.slug}/index.html`, row.head_hash);
+				}
+				let patched = 0;
+				for (const [, doc] of docs) {
+				const key = `${doc.slug}/${doc.docPath}`;
+				const idxKey = `${doc.slug}/index.html`;
+				const head = byKey.get(key) ?? byKey.get(idxKey) ?? byKey.get(doc.slug);
+					if (head && !doc.contentHash) {
+						doc.contentHash = head;
+						doc.docSha256 = head;
+						patched++;
+					}
+				}
+				console.log(`  d1: patched ${patched} entries with real head hashes`);
+			}
+		} catch (err) {
+			console.warn(`  d1: could not fetch head hashes (${(err as Error).message})`);
+		}
+	}
+
 	for (const [key, doc] of docs) {
 		const sourcePath = doc.file ?? key;
 		const localFile = findLocalTotFile(sourcePath);
@@ -264,33 +320,49 @@ async function importBulk(): Promise<ImportResult> {
 	const existingById = new Map(
 		(existingManifest?.tots ?? []).map((pala) => [pala.id, pala]),
 	);
-	const manifestPalas: PublicManifestPala[] = docs.map(([, doc]) => {
-		const previous = existingById.get(doc.id);
-		const candidate: PublicManifestPala = {
-			id: doc.id,
-			title: doc.title,
-			file: doc.file,
-			url: doc.cloudUrl ?? doc.url,
-			originalUrl: doc.cloudUrl ?? doc.originalUrl ?? doc.url,
-			slug: doc.slug,
-			kind: doc.kind,
-			docPath: doc.docPath,
-			docContentType: doc.docContentType,
-			bytes: doc.bytes,
-			createdAt: doc.createdAt,
-			contentHash: doc.contentHash,
-			docSha256: doc.docSha256,
-			assetCount: doc.assetCount,
-			assetPaths: doc.assetPaths,
-			assetHashes: doc.assetHashes,
-			assetContentTypes: doc.assetContentTypes,
-			syncedAt: previous?.syncedAt ?? generatedAt,
-			projects: doc.projects ?? [],
-			localUrl: doc.localUrl,
-			cloudUrl: doc.cloudUrl,
-		};
-		return candidate;
-	}).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+	const HASH_64 = /^[a-f0-9]{64}$/;
+	const manifestPalas: PublicManifestPala[] = docs
+		.map(([, doc]) => {
+			// Skip entries without valid hashes — these are the
+			// 53 missing-source slugs that haven't been posted
+			// to the new path B surface yet. They will re-appear
+			// in the manifest once the source bytes land.
+			if (!doc.contentHash || !HASH_64.test(doc.contentHash)) return null;
+			if (!doc.docSha256 || !HASH_64.test(doc.docSha256)) return null;
+			const previous = existingById.get(doc.id);
+			// The dashboard worker's isPublicTot enforces
+			// id === slug. The local registry stores the
+			// upstream Workspaces doc id, which is not the
+			// slug — use the slug as the manifest id.
+			const candidate: PublicManifestPala = {
+				id: doc.slug,
+				title: doc.title || doc.slug,
+				file: doc.file || doc.slug + ".html",
+				url: doc.cloudUrl ?? doc.url,
+				originalUrl: doc.cloudUrl ?? doc.originalUrl ?? doc.url,
+				slug: doc.slug,
+				kind: doc.kind,
+				docPath: doc.docPath,
+				docContentType: doc.docContentType
+					? doc.docContentType
+					: (doc.kind === "markdown" ? "text/markdown; charset=utf-8" : "text/html; charset=utf-8"),
+				bytes: doc.bytes,
+				createdAt: doc.createdAt,
+				contentHash: doc.contentHash,
+				docSha256: doc.docSha256,
+				assetCount: doc.assetCount ?? 0,
+				assetPaths: doc.assetPaths ?? [],
+				assetHashes: doc.assetHashes ?? {},
+				assetContentTypes: doc.assetContentTypes ?? {},
+				syncedAt: previous?.syncedAt ?? generatedAt,
+				projects: doc.projects ?? [],
+				localUrl: doc.localUrl,
+				cloudUrl: doc.cloudUrl,
+			};
+			return candidate;
+		})
+		.filter((c): c is PublicManifestPala => c !== null)
+		.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
 	const manifest = {
 		// The dashboard worker reads `tots` (it's the old shape, kept
