@@ -7,6 +7,38 @@ see [`ROADMAP.md`](ROADMAP.md).
 
 ---
 
+## 2026-08-20 (evening) — Tot purge: skills renamed; client-safe clean start
+
+Same day, second act. Scotty ordered "rid ourselves of Tot" plus a fresh start.
+
+**Skills purge (both `~/.agents/skills` and `~/.claude/skills`):**
+- `tot-publish` → **`pala-publish`** (dir + frontmatter `title` + v1.3.0).
+  All command refs `tot …` → `pala …`, URLs → `docs.palapala.me`, tags swept.
+  One intentional lineage line keeps the old name for provenance. The
+  brew/plannotator prerequisite was replaced with the self-hosted install
+  (`npm link` from `~/PROJECTS/pala` or `npm i -g github:soderalohastrom/pala`).
+- `sim-screenshot-observation`: 8 `tot.page` artifact-URL refs →
+  `docs.palapala.me` (both copies).
+- `html-diagram`: already clean. DSH presets, shell rc files, jot configs:
+  no `tot-publish` references found (searched).
+
+**Client-safe clean start (Scotty's pick over scorched earth):**
+- Registry 66 → **37 entries**: the 36 tagged (client rooms) + the welcome
+  pala. 29 untagged oldies + all 6 dead placeholders purged.
+  Backups: `~/.tot.backup-pre-pala-20260820`, `~/.tot.backup-clean-start-20260820`.
+- Manifest followed on the next sync (37; rooms verified: mise 24, gohappy 7,
+  wolfpack 2, /scotty 37, localhost 37 with manage).
+- 4 purged entries remain live-by-link on docs.palapala.me (D1 rows
+  `0a1RGV…`, `R7OfHA…`, `KEa103…`, `XfWsYP…`) — unlisted, not unpublished.
+  R2 mirror bytes for purged entries stay in the bucket (unreferenced).
+
+**GitHub:** repo renamed `soderalohastrom/tot` → **`soderalohastrom/pala`**
+(API rename first, then push — redirects cover the old URL). `main` +
+`backup/pre-pala-takeover` tag pushed; local `origin` and package.json
+repository URLs updated.
+
+---
+
 ## 2026-08-20 — The Pala Takeover: self-hosted publishing is LIVE; repo renamed
 
 > **The fork has fully graduated.** `pala` now publishes to its own
