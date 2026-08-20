@@ -7,26 +7,32 @@ large changes; `HANDOFF.md` is the running session log (newest first).
 
 ## Project overview
 
-`@plannotator/tot` is a TypeScript/Node CLI for **git-backed publishing**: it
-publishes a Markdown or HTML file to a living `tot.page/<slug>` URL in one
-command. `pala update` moves the same link forward (like a branch); every publish
-also creates an immutable `@hash` snapshot URL (like a commit). Files are served
-byte for byte — no build step, bundler, or config file.
+`pala` is a TypeScript/Node CLI for **git-backed publishing**: it
+publishes a Markdown or HTML file to a living `docs.palapala.me/<slug>` URL in
+one command. `pala update` moves the same link forward (like a branch); every
+publish also creates an immutable `@hash` snapshot URL (like a commit). Files
+are served byte for byte — no build step, bundler, or config file.
 
-This fork adds a **cloud dashboard**: a Cloudflare Worker + private R2 bucket
-that mirrors published pages into a searchable, self-hostable reading room,
-currently deployed at **palapala.me**.
+Forked from `@plannotator/tot`, the project now **self-hosts the publishing
+backend**: the `palapala-publisher` Worker (R2 + D1) serves the `/v1` API and
+raw pages from `docs.palapala.me`. A second Worker + private R2 bucket mirrors
+published pages into a searchable, self-hostable reading room at
+**palapala.me**. The upstream `workspaces.plannotator.ai` / `tot.page`
+infrastructure is gone; nothing here depends on it.
 
 There are two planes:
 
 1. **CLI plane** (`src/`, shipped as the `pala` npm binary — `tot` is kept as
-   a one-minor alias). Publishes pages via the Workspaces API
-   (`https://workspaces.plannotator.ai`), holds the local registry in `~/.tot`,
+   a one-minor alias). Publishes pages via the `palapala-publisher` Worker
+   (`https://docs.palapala.me`, the `/v1` API and content origin are one
+   host), holds the local registry in `~/.tot`,
    and runs `pala dashboard` (local server on `127.0.0.1:4173`) and
    `pala dashboard sync` (pushes a sanitized mirror to the Worker).
-2. **Edge plane** (`worker/index.ts` + `dashboard/` static assets + R2 bucket
-   `tot-dashboard-archive`). Serves the same dashboard UI from a
-   content-addressed mirror. Deployed with Wrangler.
+2. **Edge plane** — two Workers: `palapala-publisher`
+   (`worker-publishing/` + `wrangler-publishing.jsonc`; D1 `palapala-registry`,
+   R2 `palapala-pages`) and the dashboard Worker
+   (`worker/index.ts` + `dashboard/` static assets + R2 bucket
+   `tot-dashboard-archive`). Deployed with Wrangler.
 
 The two talk over a small HTTP contract: the CLI PUTs objects and a manifest to
 `/api/sync/*`; browsers GET `/api/tots?project=<slug>` (scoped manifest) and
@@ -61,9 +67,9 @@ read-only rooms** at bare single-segment URLs — `palapala.me/<project>` (`/mis
   matches. Rotate with `wrangler secret put OWNER_SLUG` — the value lives only
   in the secret, never in the repo.
 
-This is **curation, not security**: Palas stay public-by-link on tot.page, and
-`/mirror/*` paths are reachable if you already know slug + hash. Room scoping
-closes enumeration, not access to a known page.
+This is **curation, not security**: Palas stay public-by-link on
+docs.palapala.me, and `/mirror/*` paths are reachable if you already know
+slug + hash. Room scoping closes enumeration, not access to a known page.
 
 ## Technology stack
 
@@ -84,7 +90,7 @@ closes enumeration, not access to a known page.
 
 ```bash
 pnpm install          # deps
-pnpm build            # tsc → dist/ (the globally linked `tot` binary updates live)
+pnpm build            # tsc → dist/ (the globally linked `pala` binary updates live)
 pnpm typecheck        # wrangler types check + tsc --noEmit
 pnpm test             # vitest run (plain node environment)
 pnpm lint             # oxlint (lint:fix to auto-fix)
@@ -134,7 +140,7 @@ full gate: lint → typecheck → test → build → verify:contract.
 | `worker/index.ts` | Edge Worker: sync auth, scoped manifest, `/mirror/*`, room routing (`/` → `index.html`, `/<project>` → `room.html`), optional Access gate, static-asset fallthrough. |
 | `dashboard/` | Dashboard SPA — `index.html` (public landing page), `room.html` (the SPA shell), `app.js`, `app.css`, `reader-layout.js`. Same code local and cloud. |
 | `site/` | Editable sources for public tot.page pages (landing, API ref, agent docs) + assets. |
-| `scripts/verify-domain-contract.mjs` | Guard that the API origin stays `workspaces.plannotator.ai` and content links stay on `tot.page`. |
+| `scripts/verify-domain-contract.mjs` | Guard that the API + content origins stay `docs.palapala.me` and no upstream host leaks back in. |
 | `deploy/hostinger/` | systemd service/timer for non-macOS offsite backups. |
 | `docs/` | `CLOUD_DASHBOARD.md` (architecture), `SPEC.md` (product spec), `CLIENT_VIEWS_SPEC.md` (reading rooms — Phase 1 shipped, Phase 2 partially), `PALAPALA_TAKEOVER.md` (scoping for self-hosting the publishing backend — decision pending), `REPO_LAYOUT.md`, `LAUNCH.md`. |
 | `CLAUDE.md`, `ROADMAP.md`, `HANDOFF.md` | Architecture/invariants, direction, and session log. |
@@ -179,9 +185,9 @@ full gate: lint → typecheck → test → build → verify:contract.
   `tots/<slug>/<contentHash>/<docPath>`; uploads dedupe by SHA-256; an object
   key never changes content. Sync uploads objects *before* the manifest.
 - **Same-origin mirror URLs.** Manifest `url` is a relative `/mirror/…` path
-  (dashboard CSP is `frame-src 'self' https://tot.page`; absolute cross-origin
-  URLs get blocked). `originalUrl` stays absolute — it is the external
-  "Open ↗" link to tot.page.
+  (dashboard CSP is `frame-src 'self' https://docs.palapala.me`; absolute
+  cross-origin URLs get blocked). `originalUrl` stays absolute — it is the
+  external "Open ↗" link.
 - **No unscoped catalog on the edge.** `/api/tots` with no `?project=` is a 404
   in the Worker (not 401 — don't confirm there is something to unlock). Every
   cloud read is scoped to a room, including the owner's. Restoring an unscoped
@@ -216,8 +222,8 @@ full gate: lint → typecheck → test → build → verify:contract.
   empty, so palapala.me is publicly readable; turning Access on would put a
   login in front of the client rooms too, which is why rooms are gated by slug
   scoping instead. `/health` is always public.
-- Published tot.page pages are open: anyone with the link can view, update, or
-  delete. There is no private mode.
+- Published docs.palapala.me pages are open: anyone with the link can view,
+  update, or delete. There is no private mode.
 - Mirrored HTML is served with a CSP sandbox (`sandbox allow-scripts
   allow-forms; base-uri 'none'`); the dashboard shell sends a restrictive CSP,
   `referrer-policy: no-referrer`, and `x-frame-options: DENY`.

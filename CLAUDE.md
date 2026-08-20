@@ -1,27 +1,40 @@
-# CLAUDE.md — tot
+# CLAUDE.md — pala
 
 Context and direction for any LLM working in this repo. Read this first, then
 `docs/` for depth. Keep it current: if you change an invariant below, update this file.
 
 ## What this is
 
-`@plannotator/tot` — a CLI that publishes a Markdown/HTML file to a living
-`tot.page/<slug>` URL (git-backed: `tot update` moves the same link forward,
-every publish also keeps a frozen `@hash` snapshot). This fork adds a **cloud
-dashboard**: a Cloudflare Worker + private R2 bucket that mirrors your published
-pages into a searchable, self-hostable reading room, served from your own domain
-(currently **palapala.me**).
+`pala` — a CLI that publishes a Markdown/HTML file to a living
+`docs.palapala.me/<slug>` URL (git-backed: `pala update` moves the same link
+forward, every publish also keeps a frozen `@hash` snapshot). Forked from
+`@plannotator/tot`; **the publishing backend is now self-hosted** — the
+`palapala-publisher` Worker (R2 + D1) replaced the upstream
+`workspaces.plannotator.ai` API, which is dead. The repo also runs the **cloud
+dashboard**: a second Cloudflare Worker + private R2 bucket that mirrors
+published pages into a searchable, self-hostable reading room at
+**palapala.me**.
 
 ## Two planes
 
-1. **CLI plane** (`src/`, ships as the `tot` binary). Publishes pages, holds the
-   local registry `~/.tot`, and runs `tot dashboard` (local server) and
-   `tot dashboard sync` (pushes a sanitized mirror to the Worker).
-2. **Edge plane** (`worker/index.ts` + `dashboard/` static assets + R2). Serves
-   the same dashboard UI from a content-addressed mirror. Deployed with Wrangler.
+1. **CLI plane** (`src/`, ships as the `pala` binary; `tot` is a 90-day alias).
+   Publishes pages, holds the local registry `~/.tot`, and runs
+   `pala dashboard` (local server) and `pala dashboard sync` (pushes a
+   sanitized mirror to the dashboard Worker).
+2. **Edge plane** — two Workers:
+   - `palapala-publisher` (`worker-publishing/src/index.ts` +
+     `wrangler-publishing.jsonc`): the `/v1` API + raw content on
+     `docs.palapala.me`. D1 `palapala-registry` maps slug → head hash; R2
+     `palapala-pages` holds content-addressed bytes
+     (`pages/<slug>/<sha256>/<docPath>`, assets at `assets/<slug>/<path>`).
+   - `tot-dashboard` (`worker/index.ts` + `dashboard/` + R2
+     `tot-dashboard-archive`): the reading-room mirror at palapala.me.
 
-The two talk over a small HTTP contract: the CLI PUTs objects and a manifest to
+The CLI ↔ dashboard contract: the CLI PUTs objects and a manifest to
 `/api/sync/*`; browsers GET `/api/tots` (manifest) and `/mirror/*` (page content).
+The CLI ↔ publisher contract is the upstream `/v1` shape (snake_case entities,
+raw-body PUT, 204 DELETE) — keep `worker-publishing` byte-faithful to what
+`src/http.ts` expects; the CLI's stubbed tests assert it.
 
 ## Key files
 
@@ -47,9 +60,9 @@ The two talk over a small HTTP contract: the CLI PUTs objects and a manifest to
   key never changes content. Sync uploads objects *before* the manifest.
 - **Same-origin mirror URLs.** The manifest `url` field is a **relative**
   `/mirror/…` path, not an absolute origin. The dashboard iframes it under
-  whatever host serves it, and the page CSP is `frame-src 'self'`. An absolute
-  cross-origin URL gets blocked. (`originalUrl` stays absolute — it's the
-  external "Open ↗" link to tot.page.)
+  whatever host serves it, and the page CSP is `frame-src 'self' https://docs.palapala.me`.
+  An absolute cross-origin URL gets blocked. (`originalUrl` stays absolute —
+  it's the external "Open ↗" link.)
 - **`~/.tot` is the only record of anonymous pages.** There is no server-side
   listing. `Config.load/save` guards it (atomic write, corrupt-file preserve).
   Never let a code path silently truncate it.
@@ -90,12 +103,12 @@ The `/api/sync/*` routes are always protected by the `SYNC_SECRET` bearer token
 ## Build · test · deploy · sync
 
 ```bash
-pnpm build          # tsc → dist/. The global `tot` is npm-linked here, so this updates it live.
-pnpm typecheck      # wrangler types check + tsc --noEmit
+pnpm build          # tsc → dist/. The global `pala` is npm-linked here, so this updates it live.
+pnpm typecheck      # wrangler types check + tsc --noEmit (covers worker/ AND worker-publishing/)
 pnpm test           # vitest, plain-node env (no workerd; worker globals are stubbed in test/setup.ts)
 pnpm cloud:types    # regenerate worker-configuration.d.ts after editing wrangler.jsonc vars
-pnpm cloud:deploy   # wrangler deploy (edge plane)
-tot dashboard sync  # regenerate + push the mirror manifest (also runs every 5 min via LaunchAgent)
+pnpm cloud:deploy   # wrangler deploy (the tot-dashboard Worker; publisher uses --config wrangler-publishing.jsonc)
+pala dashboard sync # regenerate + push the mirror manifest (also runs every 5 min via LaunchAgent)
 ```
 
 **Gotcha:** `worker/index.ts` reads `env.*` vars declared in `wrangler.jsonc`.

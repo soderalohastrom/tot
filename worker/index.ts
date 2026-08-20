@@ -435,7 +435,7 @@ function withDashboardSecurity(response: Response): Response {
 	const secured = new Response(response.body, response);
 	secured.headers.set(
 		"content-security-policy",
-		"default-src 'self'; frame-src 'self' https://tot.page; img-src 'self' data: https:; style-src 'self'; script-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'",
+		"default-src 'self'; frame-src 'self' https://docs.palapala.me; img-src 'self' data: https:; style-src 'self'; script-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'",
 	);
 	secured.headers.set("referrer-policy", "no-referrer");
 	secured.headers.set("x-content-type-options", "nosniff");

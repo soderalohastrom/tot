@@ -137,12 +137,12 @@ async function postDoc(
 	}
 	const json = await resp.json() as {
 		workspace: { slug: string };
-		document: { id: string; slug: string; docPath: string; version: string };
+		document: { id: string; slug: string; doc_path: string; version: string };
 	};
 	return {
 		id: json.document.id,
 		slug: json.workspace.slug,
-		docPath: json.document.docPath,
+		docPath: json.document.doc_path,
 		version: json.document.version,
 	};
 }
@@ -377,7 +377,7 @@ async function importBulk(): Promise<ImportResult> {
 	writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
 	console.log(`Wrote manifest at ${manifestPath} (${manifestPalas.length} entries)`);
 
-	if (SYNC_TOKEN) {
+	if (SYNC_TOKEN && !DRY) {
 		// Push the new manifest to the dashboard worker. The PUT
 		// endpoint accepts a Content-Length header and validates it.
 		const body = JSON.stringify(manifest);
@@ -399,6 +399,8 @@ async function importBulk(): Promise<ImportResult> {
 			const text = await resp.text();
 			console.log(`  manifest PUT body: ${text.slice(0, 200)}`);
 		}
+	} else if (SYNC_TOKEN && DRY) {
+		console.log("  DRY: manifest PUT skipped");
 	}
 
 	return result;
