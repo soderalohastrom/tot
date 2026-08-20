@@ -176,11 +176,13 @@ function cardMarkup(pala, index) {
 			? `<iframe src="${escapeHtml(pala.localUrl)}" loading="lazy" sandbox="allow-scripts allow-forms" tabindex="-1" title="Preview of ${escapeHtml(pala.title)}"></iframe>`
 			: pala.cloudUrl
 				? `<iframe src="${escapeHtml(pala.cloudUrl)}" loading="lazy" sandbox="allow-scripts allow-forms" tabindex="-1" title="Cloud preview of ${escapeHtml(pala.title)}"></iframe>`
-				: `<div class="preview-placeholder" role="img" aria-label="No source available for ${escapeHtml(pala.title)}">
-					<span class="preview-glyph" aria-hidden="true">·</span>
-					<span class="preview-label">no source available</span>
-					<span class="preview-hint">re-publish to restore</span>
-				</div>`}</div>
+				: pala.url
+					? `<iframe src="${escapeHtml(pala.url)}" loading="lazy" sandbox="allow-scripts allow-forms" tabindex="-1" title="Mirror preview of ${escapeHtml(pala.title)}"></iframe>`
+					: `<div class="preview-placeholder" role="img" aria-label="No source available for ${escapeHtml(pala.title)}">
+						<span class="preview-glyph" aria-hidden="true">·</span>
+						<span class="preview-label">no source available</span>
+						<span class="preview-hint">re-publish to restore</span>
+					</div>`}</div>
 		<button class="select-card" type="button" data-select="${escapeHtml(pala.id)}" aria-label="Read ${escapeHtml(pala.title)}"></button>
 		${actions}
 		<div class="card-body">
@@ -221,12 +223,15 @@ function selectPala(id) {
 	state.selected = id;
 	elements.readerTitle.textContent = pala.title;
 	const hasLocal = pala.localUrl && pala.localUrl !== pala.url;
-	elements.readerFrame.src = hasLocal ? pala.localUrl : (pala.cloudUrl || "");
+	// localUrl (same-origin local file) → cloudUrl → url (the same-origin
+	// mirror path on the cloud; the only field every entry always carries).
+	const src = hasLocal ? pala.localUrl : (pala.cloudUrl || pala.url || "");
+	elements.readerFrame.src = src;
 	elements.readerOpen.href = pala.cloudUrl || pala.url;
 	elements.readerEmpty.hidden = true;
-	elements.readerActive.hidden = !hasLocal;
-	elements.readerMissing.hidden = hasLocal;
-	elements.readerFrame.hidden = !hasLocal;
+	elements.readerActive.hidden = !src;
+	elements.readerMissing.hidden = Boolean(src);
+	elements.readerFrame.hidden = !src;
 	elements.reader.classList.add("open");
 }
 
