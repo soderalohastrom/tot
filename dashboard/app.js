@@ -190,7 +190,7 @@ function cardMarkup(pala, index) {
 			${editing ? `<form class="rename-form" data-rename="${escapeHtml(pala.id)}"><input name="title" value="${escapeHtml(pala.title)}" maxlength="160" aria-label="New title for ${escapeHtml(pala.title)}" /><span>Enter to save · Esc to cancel</span></form>` : `<h3 title="${escapeHtml(pala.title)}">${escapeHtml(pala.title)}</h3>`}
 			${tagRow}
 			<p class="file-path" title="${escapeHtml(pala.file)}">${escapeHtml(pala.file)}</p>
-			<div class="card-footer"><span>${formatBytes(pala.bytes)}</span><a href="${escapeHtml(pala.url)}" target="_blank" rel="noopener noreferrer">Open ↗</a></div>
+			<div class="card-footer"><span>${formatBytes(pala.bytes)}</span><a href="${escapeHtml(pala.cloudUrl || pala.url)}" target="_blank" rel="noopener noreferrer">Open ↗</a></div>
 		</div>
 	</article>`;
 }
